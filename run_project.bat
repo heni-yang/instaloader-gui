@@ -43,19 +43,18 @@ for /f "usebackq delims=" %%I in (`where.exe python`) do (
 )
 
 if not defined PYTHON_310 (
-    echo [WARN] Python 3.10을 찾지 못했습니다. 3.10 관련 기능은 사용할 수 없습니다.
+    echo [WARN] Python 3.10을 찾지 못했습니다. 분류 기능은 사용할 수 없습니다.
+    echo.
 )
 if not defined PYTHON_313 (
-    echo [WARN] Python 3.13을 찾지 못했습니다. 3.13 관련 기능은 사용할 수 없습니다.
+    echo [WARN] Python 3.13을 찾지 못했습니다. insta_venv 생성이 불가능할 수 있습니다.
+    echo.
 )
 
 REM -----------------------------------------------------------------
-REM (B) 기존 스크립트 로직: insta_venv / classify_venv 생성/설치/실행
+REM (B) insta_venv / classify_venv 생성/설치/실행
 REM -----------------------------------------------------------------
-REM insta_venv 경로
 set INSTA_ENV_PATH=crawling\insta_venv
-
-REM classify_venv 경로
 set CLASSIFY_ENV_PATH=crawling\classification\classify_venv
 
 REM requirements (사용자 환경에 맞게 파일명 수정)
@@ -71,29 +70,28 @@ if exist "%INSTA_ENV_PATH%\Scripts\python.exe" (
 ) else (
     if not defined PYTHON_313 (
         echo [ERROR] Python 3.13 경로를 찾을 수 없어 insta_venv를 생성할 수 없습니다.
-        pause
-        exit /b 1
-    )
-    echo [INFO] insta_venv 가상환경이 없습니다. 새로 생성합니다...
-    "%PYTHON_313%" -m venv "%INSTA_ENV_PATH%"
-    if errorlevel 1 (
-        echo [ERROR] insta_venv 생성 실패. Python 3.13 경로를 확인하세요.
-        pause
-        exit /b 1
-    )
-    echo [INFO] insta_venv 생성 완료.
+        echo [INFO] 크롤링 기능을 사용할 수 없습니다. 스크립트를 계속 진행합니다.
+    ) else (
+        echo [INFO] insta_venv 가상환경이 없습니다. 새로 생성합니다...
+        "%PYTHON_313%" -m venv "%INSTA_ENV_PATH%"
+        if errorlevel 1 (
+            echo [ERROR] insta_venv 생성 실패. Python 3.13 경로를 확인하세요.
+            echo [INFO] 크롤링 기능을 사용할 수 없습니다. 스크립트를 계속 진행합니다.
+        ) else (
+            echo [INFO] insta_venv 생성 완료.
 
-    echo [INFO] requirements_insta.txt 설치...
-    call "%INSTA_ENV_PATH%\Scripts\activate.bat"
-    pip install --upgrade pip
-    pip install -r %INSTA_REQ%
-    if errorlevel 1 (
-        echo [ERROR] insta_venv requirements 설치 실패.
-        pause
-        exit /b 1
+            echo [INFO] requirements_insta.txt 설치...
+            call "%INSTA_ENV_PATH%\Scripts\activate.bat"
+            pip install --upgrade pip
+            pip install -r %INSTA_REQ%
+            if errorlevel 1 (
+                echo [ERROR] insta_venv requirements 설치 실패.
+                echo [INFO] 크롤링 기능을 사용할 수 없습니다. 스크립트를 계속 진행합니다.
+            )
+            call "%INSTA_ENV_PATH%\Scripts\deactivate.bat"
+            echo [INFO] insta_venv 환경 세팅 완료.
+        )
     )
-    call "%INSTA_ENV_PATH%\Scripts\deactivate.bat"
-    echo [INFO] insta_venv 환경 세팅 완료.
 )
 
 echo.
@@ -104,46 +102,50 @@ if exist "%CLASSIFY_ENV_PATH%\Scripts\python.exe" (
     echo [INFO] classify_venv 이미 존재합니다.
 ) else (
     if not defined PYTHON_310 (
-        echo [ERROR] Python 3.10 경로를 찾을 수 없어 classify_venv를 생성할 수 없습니다.
-        pause
-        exit /b 1
-    )
-    echo [INFO] classify_venv 가상환경이 없습니다. 새로 생성합니다...
-    "%PYTHON_310%" -m venv "%CLASSIFY_ENV_PATH%"
-    if errorlevel 1 (
-        echo [ERROR] classify_venv 생성 실패. Python 3.10 경로를 확인하세요.
-        pause
-        exit /b 1
-    )
-    echo [INFO] classify_venv 생성 완료.
+        echo [WARN] Python 3.10 경로를 찾을 수 없어 classify_venv를 생성할 수 없습니다.
+        echo [INFO] 분류 기능은 사용할 수 없습니다.
+    ) else (
+        echo [INFO] classify_venv 가상환경이 없습니다. 새로 생성합니다...
+        "%PYTHON_310%" -m venv "%CLASSIFY_ENV_PATH%"
+        if errorlevel 1 (
+            echo [ERROR] classify_venv 생성 실패. Python 3.10 경로를 확인하세요.
+            echo [INFO] 분류 기능을 사용할 수 없습니다.
+        ) else (
+            echo [INFO] classify_venv 생성 완료.
 
-    echo [INFO] requirements_classify.txt 설치...
-    call "%CLASSIFY_ENV_PATH%\Scripts\activate.bat"
-    pip install --upgrade pip
-    pip install -r %CLASSIFY_REQ%
-    if errorlevel 1 (
-        echo [ERROR] classify_venv requirements 설치 실패.
-        pause
-        exit /b 1
+            echo [INFO] requirements_classify.txt 설치...
+            call "%CLASSIFY_ENV_PATH%\Scripts\activate.bat"
+            pip install --upgrade pip
+            pip install -r %CLASSIFY_REQ%
+            if errorlevel 1 (
+                echo [ERROR] classify_venv requirements 설치 실패.
+                echo [INFO] 분류 기능을 사용할 수 없습니다.
+            )
+            call "%CLASSIFY_ENV_PATH%\Scripts\deactivate.bat"
+            echo [INFO] classify_venv 환경 세팅 완료.
+        )
     )
-    call "%CLASSIFY_ENV_PATH%\Scripts\deactivate.bat"
-    echo [INFO] classify_venv 환경 세팅 완료.
 )
 
 echo.
 echo ==============================================================================
 echo 4) 인스타그램 이미지 크롤링 (GUI 실행)
 echo ==============================================================================
-call "%INSTA_ENV_PATH%\Scripts\activate.bat"
-echo [INFO] insta_venv 활성화 완료. (Python 3.13)
-python -m crawling.main
-call "%INSTA_ENV_PATH%\Scripts\deactivate.bat"
+if exist "%INSTA_ENV_PATH%\Scripts\python.exe" (
+    echo [INFO] insta_venv 활성화 후 GUI 실행...
+    call "%INSTA_ENV_PATH%\Scripts\activate.bat"
+    python -m crawling.main
+    call "%INSTA_ENV_PATH%\Scripts\deactivate.bat"
+) else (
+    echo [WARN] insta_venv가 없거나 생성 실패. 크롤링 기능을 사용할 수 없습니다.
+)
 
 echo.
 echo ==============================================================================
 echo 5) 분류는 GUI 내에서 옵션 선택 시 자동 실행
 echo ==============================================================================
-echo [INFO] 분류 단계는 GUI 내에서 실행 여부를 선택할 수 있습니다.
+echo [INFO] 분류 단계는 classify_venv가 있어야 동작합니다. 
+echo [INFO] 없는 경우, 분류 기능은 비활성화됩니다.
 
 echo.
 echo [INFO] === 전체 프로젝트 완료 ===
