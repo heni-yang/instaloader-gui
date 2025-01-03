@@ -2,7 +2,7 @@ import os
 import subprocess
 
 # 분류 스크립트 관련 설정 상수
-CLASSIFY_SCRIPT_NAME = 'classify_yolo_v16.py'
+CLASSIFY_SCRIPT_NAME = 'classify_yolo.py'
 # classification 디렉토리에 스크립트가 있다고 가정
 CLASSIFY_SCRIPT_REL_PATH = os.path.join('classification', CLASSIFY_SCRIPT_NAME)
 
