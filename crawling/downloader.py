@@ -18,7 +18,6 @@ os.makedirs(SESSION_DIR, exist_ok=True)
 STAMPS_FILE_IMAGES = os.path.join(os.path.dirname(os.path.abspath(__file__)), f"latest-stamps-images.ini")
 STAMPS_FILE_REELS = os.path.join(os.path.dirname(os.path.abspath(__file__)), f"latest-stamps-reels.ini")
 
-
 def instaloader_login(username, password, download_path, include_videos=False, include_reels=False):
     L = instaloader.Instaloader(
         download_videos=include_videos or include_reels,
@@ -51,7 +50,6 @@ def instaloader_login(username, password, download_path, include_videos=False, i
         return None
 
     return L
-
 
 def download_posts(L, username, search_term, search_type, target, include_images, include_videos, include_reels, progress_queue, stop_event, resume_from=0):
     print(f"게시물 다운로드 시작: {search_term} (검색 유형: {search_type})")
@@ -106,84 +104,49 @@ def download_posts(L, username, search_term, search_type, target, include_images
     except instaloader.exceptions.LoginRequiredException as e:
         print(f"{search_term} 다운로드 중 로그인 필요 에러 발생: {e}")
         progress_queue.put(("term_error", search_term, "로그인 필요", username))
-        # raise e
     except instaloader.exceptions.ConnectionException as e:
         print(f"{search_term} 다운로드 중 연결 에러 발생: {e}")
         progress_queue.put(("term_error", search_term, f"연결 에러: {e}", username))
-        # raise e
     except Exception as e:
         print(f"{search_term} 다운로드 중 에러 발생: {e}")
         progress_queue.put(("account_switch_needed", username))
-        # raise e
-
 
 def user_download_with_profiles(L, search_user, target, include_images, include_reels, progress_queue, stop_event, allow_duplicate, base_path):
-    # base_path = L.dirname_pattern
-
     def download_content():
         nonlocal search_user, allow_duplicate, base_path
         try:
-            # Defining my_post_filter inside download_content to capture profile_usernames
             def my_post_filter(post):
                 try:
-                    # 이미지와 동영상 모두 다운로드할 경우
                     if include_images and include_reels:
-                        return True  # 모든 게시물 다운로드
-
-                    # 이미지만 다운로드할 경우
-                    if include_images and not include_reels:
-                        return not post.is_video  # 동영상이 아니면 True
-
-                    # 동영상만 다운로드할 경우
-                    if include_reels and not include_images:
-                        return post.is_video  # 동영상만 True
-
-                    # 둘 다 False일 경우 다운로드하지 않음
-                    return False
-                            
-                    # 소유자가 search_user인 경우
-                    if post.owner_username.lower() in profile_usernames:
                         return True
-
-                    # 태그된 사용자가 search_user인 경우
-                    for tagged_user in post.tagged_users:
-                        if hasattr(tagged_user, 'username'):
-                            if tagged_user.username.lower() in profile_usernames:
-                                return True
-                        else:
-                            # tagged_user가 문자열인 경우
-                            if tagged_user.lower() in profile_usernames:
-                                return True
-
-                    # 조건에 맞지 않으면 False
+                    if include_images and not include_reels:
+                        return not post.is_video
+                    if include_reels and not include_images:
+                        return post.is_video
                     return False
                 except Exception as e:
                     print(f"Error in post_filter: {e}")
                     return False
 
-            # 이미 로그인된 L 인스턴스를 재사용
-            L_content = L  # 기존 인스턴스 재사용
+            L_content = L
             content_folder = os.path.join(base_path, 'ID', search_user, 'Image')
             L_content.dirname_pattern = content_folder
             os.makedirs(content_folder, exist_ok=True)
 
-            list_of_users = [search_user]  # 원하는 사용자 이름으로 변경
+            list_of_users = [search_user]
             profiles = [instaloader.Profile.from_username(L_content.context, user) for user in list_of_users]
-            profile_usernames = {profile.username.lower() for profile in profiles}  # 소문자로 변환하여 집합에 저장
+            profile_usernames = {profile.username.lower() for profile in profiles}
 
-            # 프로필 객체 생성
             profile = Profile.from_username(L_content.context, search_user)
                 
-            # allow_duplicate에 따라 LatestStamps 설정
             if allow_duplicate:
                 latest_stamps_images = None
             else:
                 latest_stamps_images = LatestStamps(STAMPS_FILE_IMAGES)
                 latest_stamps_reels = LatestStamps(STAMPS_FILE_REELS)
                 
-            # 다운로드 매개변수 설정
             image_kwargs = {
-                'profiles': {profile},  # Set[Profile]로 전달
+                'profiles': {profile},
                 'profile_pic': False,
                 'posts': include_images or include_reels,
                 'tagged': False,
@@ -191,10 +154,9 @@ def user_download_with_profiles(L, search_user, target, include_images, include_
                 'highlights': False,
                 'stories': False,
                 'fast_update': False,
-                'post_filter': my_post_filter,  # 수정된 필터 함수
+                'post_filter': my_post_filter,
                 'raise_errors': True,
-                'latest_stamps': latest_stamps_images,  # allow_duplicate가 False일 때만 전달
-                #'reels': include_reels,  # include_reels 플래그에 따라 설정
+                'latest_stamps': latest_stamps_images,
                 'max_count': target if target != 0 else None,
             }
             
@@ -203,13 +165,14 @@ def user_download_with_profiles(L, search_user, target, include_images, include_
             progress_queue.put(("term_progress", search_user, "콘텐츠 다운로드 완료", L.context.username))
 
             if include_reels:
-                # 다운로드된 파일 중 동영상 파일을 Reels 디렉토리로 이동
                 reels_folder = os.path.join(base_path, 'ID', search_user, 'Reels')
                 os.makedirs(reels_folder, exist_ok=True)
 
+                video_files = []
                 for root_dir, dirs, files in os.walk(content_folder):
                     for file in files:
                         if file.lower().endswith(('.mp4', '.mov', '.avi', '.mkv')):
+                            video_files.append(file)
                             source_path = os.path.join(root_dir, file)
                             destination_path = os.path.join(reels_folder, file)
                             try:
@@ -219,20 +182,22 @@ def user_download_with_profiles(L, search_user, target, include_images, include_
                                 print(f"동영상 파일 이동 중 에러 발생: {e}")
                                 progress_queue.put(("term_error", search_user, f"동영상 파일 이동 중 에러 발생: {e}", L.context.username))
 
-                progress_queue.put(("term_progress", search_user, "동영상 파일 이동 완료", L.context.username))
+                if video_files:
+                    # 동영상 파일이 실제로 존재하여 이동을 수행한 경우에만 업데이트
+                    progress_queue.put(("term_progress", search_user, "동영상 파일 이동 완료", L.context.username))
+                # else: 아무것도 하지 않음 (print 및 progress_queue 업데이트 생략)
 
         except Exception as e:
             progress_queue.put(("term_error", search_user, f"콘텐츠 다운로드 중 에러 발생: {e}", L.context.username))
-            
+                
     download_content()
-
 
 def crawl_and_download(
     search_terms, target, accounts, search_type, include_images, include_videos, include_reels,
     progress_queue, on_complete, stop_event, download_path='download', append_status=None,
     root=None, download_directory_var=None,
     include_human_classify_var_hashtag=None, include_human_classify_var_user=None,
-    allow_duplicate=False  # 4. allow_duplicate 매개변수 추가
+    allow_duplicate=False
 ):
     print("크롤링 및 다운로드 시작...")
 
@@ -240,8 +205,7 @@ def crawl_and_download(
     os.makedirs(base_download_path, exist_ok=True)
 
     loaded_loaders = []
-    if not accounts:  # 계정 리스트가 비어있을 때
-        # 로그인 없이 Instaloader 인스턴스 생성
+    if not accounts:
         loader = instaloader.Instaloader(
             download_videos=include_videos,
             download_video_thumbnails=False,
@@ -277,7 +241,6 @@ def crawl_and_download(
             else:
                 print(f"로그인 실패: {account['INSTAGRAM_USERNAME']}")
 
-    # 인물 분류 여부 결정
     if search_type == "hashtag":
         include_human_classify = include_human_classify_var_hashtag.get() if include_human_classify_var_hashtag else False
     else:
@@ -313,9 +276,25 @@ def crawl_and_download(
 
                 append_status(f"완료: '{term}' 다운로드 완료 (계정: {current_username})")
 
-                # 다운로드 완료 후 즉시 인물 분류 수행
+                # 인물 분류 수행 전에 파일 존재 여부 확인
                 if include_human_classify and not stop_event.is_set():
-                    classify_images(root, append_status, download_directory_var, term, current_username, search_type, stop_event)
+                    if search_type == 'hashtag':
+                        classify_dir = os.path.join(base_download_path, 'hashtag', term, 'Image')
+                    else:
+                        classify_dir = os.path.join(base_download_path, 'ID', term, 'Image')
+                    
+                    # 이미지 파일 존재 여부 확인
+                    has_images = False
+                    if os.path.isdir(classify_dir):
+                        for fname in os.listdir(classify_dir):
+                            if fname.lower().endswith(('.jpg', '.jpeg', '.png')):
+                                has_images = True
+                                break
+
+                    if has_images:
+                        classify_images(root, append_status, download_directory_var, term, current_username, search_type, stop_event)
+                        # classify_images 함수 내부에서 필요한 로그 및 progress_queue 업데이트를 수행
+                    # else: 아무것도 하지 않음 (print 및 progress_queue 업데이트 생략)
 
                 if stop_event.is_set():
                     append_status("중지: 분류 중지됨.")
@@ -332,7 +311,8 @@ def crawl_and_download(
                 loader_dict['username'],
                 loader_dict['password'],
                 base_download_path,
-                include_videos
+                include_videos,
+                include_reels
             )
             if new_loader:
                 loaded_loaders[account_index]['loader'] = new_loader
