@@ -1,6 +1,6 @@
 import os
 import instaloader
-from instaloader import Profile, LatestStamps, RateController
+from instaloader import Profile, LatestStamps, RateController, exceptions
 from queue import Empty
 from itertools import islice
 import threading
@@ -19,9 +19,9 @@ STAMPS_FILE_IMAGES = os.path.join(os.path.dirname(os.path.abspath(__file__)), f"
 STAMPS_FILE_REELS = os.path.join(os.path.dirname(os.path.abspath(__file__)), f"latest-stamps-reels.ini")
 
 
-def instaloader_login(username, password, download_path, include_videos=False):
+def instaloader_login(username, password, download_path, include_videos=False, include_reels=False):
     L = instaloader.Instaloader(
-        download_videos=include_videos,
+        download_videos=include_videos or include_reels,
         download_video_thumbnails=False,
         download_geotags=False,
         download_comments=False,
@@ -126,10 +126,21 @@ def user_download_with_profiles(L, search_user, target, include_images, include_
             # Defining my_post_filter inside download_content to capture profile_usernames
             def my_post_filter(post):
                 try:
-                    # 비디오 게시물은 제외 (이미지를 우선적으로 다운로드)
-                    if post.is_video:
-                        return False
+                    # 이미지와 동영상 모두 다운로드할 경우
+                    if include_images and include_reels:
+                        return True  # 모든 게시물 다운로드
 
+                    # 이미지만 다운로드할 경우
+                    if include_images and not include_reels:
+                        return not post.is_video  # 동영상이 아니면 True
+
+                    # 동영상만 다운로드할 경우
+                    if include_reels and not include_images:
+                        return post.is_video  # 동영상만 True
+
+                    # 둘 다 False일 경우 다운로드하지 않음
+                    return False
+                            
                     # 소유자가 search_user인 경우
                     if post.owner_username.lower() in profile_usernames:
                         return True
@@ -168,24 +179,25 @@ def user_download_with_profiles(L, search_user, target, include_images, include_
                 latest_stamps_images = None
             else:
                 latest_stamps_images = LatestStamps(STAMPS_FILE_IMAGES)
+                latest_stamps_reels = LatestStamps(STAMPS_FILE_REELS)
                 
             # 다운로드 매개변수 설정
             image_kwargs = {
                 'profiles': {profile},  # Set[Profile]로 전달
                 'profile_pic': False,
-                'posts': include_images,
+                'posts': include_images or include_reels,
                 'tagged': False,
                 'igtv': False,
                 'highlights': False,
                 'stories': False,
                 'fast_update': False,
-              #  'post_filter': my_post_filter,  # 수정된 필터 함수
-                'raise_errors': False,
+                'post_filter': my_post_filter,  # 수정된 필터 함수
+                'raise_errors': True,
                 'latest_stamps': latest_stamps_images,  # allow_duplicate가 False일 때만 전달
-                'reels': include_reels,  # include_reels 플래그에 따라 설정
+                #'reels': include_reels,  # include_reels 플래그에 따라 설정
                 'max_count': target if target != 0 else None,
             }
-
+            
             L_content.download_profiles(**image_kwargs)
 
             progress_queue.put(("term_progress", search_user, "콘텐츠 다운로드 완료", L.context.username))
@@ -252,7 +264,8 @@ def crawl_and_download(
                 account['INSTAGRAM_USERNAME'], 
                 account['INSTAGRAM_PASSWORD'], 
                 base_download_path,
-                include_videos
+                include_videos,
+                include_reels
             )
             if loader:
                 loaded_loaders.append({
@@ -290,8 +303,10 @@ def crawl_and_download(
                 if search_type == 'hashtag':
                     download_posts(L, current_username, term, search_type, target, include_images, include_videos, include_reels, progress_queue, stop_event)
                 else:
-                    user_download_with_profiles(L, term, target, include_images, include_reels, progress_queue, stop_event, allow_duplicate, base_download_path)
-
+                    try:
+                        user_download_with_profiles(L, term, target, include_images, include_reels, progress_queue, stop_event, allow_duplicate, base_download_path)
+                    except Exception as e:
+                        print(e)
                 if stop_event.is_set():
                     append_status("중지: 다운로드 중지됨.")
                     break
@@ -308,6 +323,7 @@ def crawl_and_download(
 
             # 모든 검색어 처리 완료 (현재 계정)
             break
+
         except Exception as e:
             print(f"계정 에러 발생: {e}")
             append_status(f"오류: 계정 '{current_username}' 처리 중 에러 발생. 재로그인 시도.")
