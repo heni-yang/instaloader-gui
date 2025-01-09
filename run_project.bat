@@ -60,6 +60,7 @@ set CLASSIFY_ENV_PATH=crawling\classification\classify_venv
 REM requirements (사용자 환경에 맞게 파일명 수정)
 set INSTA_REQ=requirements_insta.txt
 set CLASSIFY_REQ=requirements_classify.txt
+set TORCH_REQ=requirements_torch.txt
 
 echo.
 echo ==============================================================================
@@ -82,7 +83,7 @@ if exist "%INSTA_ENV_PATH%\Scripts\python.exe" (
 
             echo [INFO] requirements_insta.txt 설치...
             call "%INSTA_ENV_PATH%\Scripts\activate.bat"
-            pip install --upgrade pip
+            "%INSTA_ENV_PATH%\Scripts\python.exe" -m pip install --upgrade pip
             pip install -r %INSTA_REQ%
             if errorlevel 1 (
                 echo [ERROR] insta_venv requirements 설치 실패.
@@ -115,8 +116,10 @@ if exist "%CLASSIFY_ENV_PATH%\Scripts\python.exe" (
 
             echo [INFO] requirements_classify.txt 설치...
             call "%CLASSIFY_ENV_PATH%\Scripts\activate.bat"
-            pip install --upgrade pip
+            "%CLASSIFY_ENV_PATH%\Scripts\python.exe" -m pip install --upgrade pip
+            pip install torch==2.0.1+cu118 torchvision==0.15.2+cu118 torchaudio==2.0.2+cu118 --index-url https://download.pytorch.org/whl/cu118
             pip install -r %CLASSIFY_REQ%
+            pip install --no-build-isolation -e git+https://github.com/facebookresearch/detectron2.git@c69939aa85460e8135f40bce908a6cddaa73065f#egg=detectron2
             if errorlevel 1 (
                 echo [ERROR] classify_venv requirements 설치 실패.
                 echo [INFO] 분류 기능을 사용할 수 없습니다.
