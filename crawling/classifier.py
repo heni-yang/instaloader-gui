@@ -35,9 +35,9 @@ def run_classification_process(python_executable, classifier_script, target_imag
 def classify_images(root, append_status, download_directory_var, search_term, username, search_type, stop_event):
     download_path = download_directory_var.get().strip()
     if search_type == "hashtag":
-        target_image_dir = os.path.join(download_path, 'hashtag', search_term, 'Image')
+        target_image_dir = os.path.join(download_path, 'unclassified', 'hashtag', search_term, 'Image')
     else:
-        target_image_dir = os.path.join(download_path, 'ID', search_term, 'Image')
+        target_image_dir = os.path.join(download_path, 'unclassified', 'ID', search_term, 'Image')
 
     if not os.path.isdir(target_image_dir):
         append_status(f"오류: 분류할 디렉토리가 존재하지 않습니다: {target_image_dir}")
