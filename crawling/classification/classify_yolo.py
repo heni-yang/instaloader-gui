@@ -395,10 +395,10 @@ def classify_images(directory_path, download_path, search_type, search_term):
         break
     #--------------------------------------------------------
 
-    for i in range(0, len(image_paths), batch_size):
-        batch = image_paths[i:i+batch_size]
+    for i in range(0, len(image_paths), BATCH_SIZE):
+        batch = image_paths[i:i+BATCH_SIZE]
         try:
-            logging.info(f"배치 {i//batch_size+1}: {len(batch)}개의 이미지를 처리 중...")
+            logging.info(f"배치 {i//BATCH_SIZE+1}: {len(batch)}개의 이미지를 처리 중...")
             results = yolo_model(batch)
             pose_results = pose_model(batch)
 
