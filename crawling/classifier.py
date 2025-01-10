@@ -8,12 +8,24 @@ CLASSIFY_SCRIPT_REL_PATH = os.path.join('classification', CLASSIFY_SCRIPT_NAME)
 
 def run_classification_process(python_executable, classifier_script, target_image_dir, stop_event, append_status, search_type, search_term, download_path):
     try:
+        cmd = [
+            python_executable,
+            classifier_script,
+            target_image_dir,
+            search_type,
+            search_term,
+            download_path
+        ]
+        
         process = subprocess.Popen(
-            [python_executable, classifier_script, target_image_dir],
+            cmd,
             text=True,
             encoding='utf-8',
-            shell=False
+            shell=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE
         )
+        
         append_status(f"분류 프로세스 시작: {' '.join([python_executable, classifier_script, target_image_dir])}")
         
         stdout, stderr = process.communicate()
