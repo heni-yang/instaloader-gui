@@ -349,8 +349,8 @@ def classify_images(directory_path, download_path, search_type, search_term):
     search_term   : 검색어
     """
     
-    yolo_model = YOLO(weights)
-    pose_model = YOLO(pose_weights)
+    yolo_model = YOLO(WEIGHTS_PATH)
+    pose_model = YOLO(POSE_WEIGHTS)
 
     # Detectron2 config
     cfg = get_cfg()
