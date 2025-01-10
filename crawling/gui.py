@@ -469,8 +469,8 @@ def main_gui():
             append_status(f"오류: 다운로드 경로가 존재하지 않습니다: {main_download_dir}")
             return
 
-        hashtag_dir = os.path.join(main_download_dir, 'hashtag')
-        user_id_dir = os.path.join(main_download_dir, 'ID')
+        hashtag_dir = os.path.join(main_download_dir, 'unclassified', 'hashtag')
+        user_id_dir = os.path.join(main_download_dir, 'unclassified', 'ID')
         os.makedirs(hashtag_dir, exist_ok=True)
         os.makedirs(user_id_dir, exist_ok=True)
 
