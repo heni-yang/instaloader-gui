@@ -447,8 +447,8 @@ def main():
     handler.setFormatter(formatter)
     logger.addHandler(handler)
 
-    if len(sys.argv) != 2:
-        logging.error("사용법: python classify_yolo.py <target_image_dir> <search_type> <search_term> <download_path>")
+    if len(sys.argv) != 5:
+        print("Usage: python classify_yolo.py <target_image_dir> <search_type> <search_term> <download_path>")
         sys.exit(1)
 
     target_image_dir = sys.argv[1]
