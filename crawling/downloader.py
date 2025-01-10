@@ -165,7 +165,7 @@ def user_download_with_profiles(L, search_user, target, include_images, include_
             progress_queue.put(("term_progress", search_user, "콘텐츠 다운로드 완료", L.context.username))
 
             if include_reels:
-                reels_folder = os.path.join(base_path, 'ID', search_user, 'Reels')
+                reels_folder = os.path.join(base_path, 'Reels', 'ID', search_user)
                 os.makedirs(reels_folder, exist_ok=True)
 
                 video_files = []
