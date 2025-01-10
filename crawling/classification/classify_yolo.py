@@ -341,16 +341,37 @@ def logic3_body(yolo_pose_result, rcnn_kps, img_area):
 ##############################################
 # 여기서부터 최상위 디렉토리만 처리하도록 수정
 ##############################################
-def classify_images(directory_path, weights, pose_weights, predictor, keypoint_predictor, batch_size):
-    # "인물" / "비인물" 폴더 생성
-    human_dir = os.path.join(directory_path, "인물")
-    non_human_dir = os.path.join(directory_path, "비인물")
-    os.makedirs(human_dir, exist_ok=True)
-    os.makedirs(non_human_dir, exist_ok=True)
-
+def classify_images(directory_path, download_path, search_type, search_term):
+    """
+    directory_path: unclassified/.../Image 폴더 (분류 대상)
+    download_path : 최상위 download 폴더
+    search_type   : "hashtag" or "ID"
+    search_term   : 검색어
+    """
+    
     yolo_model = YOLO(weights)
     pose_model = YOLO(pose_weights)
 
+    # Detectron2 config
+    cfg = get_cfg()
+    cfg.merge_from_file(model_zoo.get_config_file(DETECTRON2_CONFIG))
+    cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = PERSON_CONF_THRESHOLD_DETECTRON
+    cfg.MODEL.WEIGHTS = DETECTRON2_WEIGHTS
+    predictor = DefaultPredictor(cfg)
+
+    cfg_kp = get_cfg()
+    cfg_kp.merge_from_file(model_zoo.get_config_file(DETECTRON2_KEYPOINT_CONFIG))
+    cfg_kp.MODEL.ROI_HEADS.SCORE_THRESH_TEST = max(FACE_CONF_THRESHOLD_DETECTRON_KEYPOINT,
+                                                   BODY_CONF_THRESHOLD_DETECTRON_KEYPOINT)
+    cfg_kp.MODEL.WEIGHTS = DETECTRON2_KEYPOINT_WEIGHTS
+    keypoint_predictor = DefaultPredictor(cfg_kp)
+
+    # 최종 이동 폴더
+    human_dir = os.path.join(download_path, "인물", f"{search_type}_{search_term}", "Image")
+    non_human_dir = os.path.join(download_path, "비인물", f"{search_type}_{search_term}", "Image")
+    os.makedirs(human_dir, exist_ok=True)
+    os.makedirs(non_human_dir, exist_ok=True)
+    
     image_paths = []
     
     #--------------------------------------------------------
@@ -426,32 +447,20 @@ def main():
     handler.setFormatter(formatter)
     logger.addHandler(handler)
 
-    # Detectron2 config
-    cfg = get_cfg()
-    cfg.merge_from_file(model_zoo.get_config_file(DETECTRON2_CONFIG))
-    cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = PERSON_CONF_THRESHOLD_DETECTRON
-    cfg.MODEL.WEIGHTS = DETECTRON2_WEIGHTS
-    predictor = DefaultPredictor(cfg)
-
-    cfg_kp = get_cfg()
-    cfg_kp.merge_from_file(model_zoo.get_config_file(DETECTRON2_KEYPOINT_CONFIG))
-    cfg_kp.MODEL.ROI_HEADS.SCORE_THRESH_TEST = max(FACE_CONF_THRESHOLD_DETECTRON_KEYPOINT,
-                                                   BODY_CONF_THRESHOLD_DETECTRON_KEYPOINT)
-    cfg_kp.MODEL.WEIGHTS = DETECTRON2_KEYPOINT_WEIGHTS
-    keypoint_predictor = DefaultPredictor(cfg_kp)
-
     if len(sys.argv) != 2:
-        logging.error("사용법: python classify_yolo_v16.py [이미지_디렉토리]")
+        logging.error("사용법: python classify_yolo.py <target_image_dir> <search_type> <search_term> <download_path>")
         sys.exit(1)
 
-    DIRECTORY_PATH = sys.argv[1]
+    target_image_dir = sys.argv[1]
+    search_type = sys.argv[2]
+    search_term = sys.argv[3]
+    download_path = sys.argv[4]
+    
     classify_images(
-        directory_path=DIRECTORY_PATH,
-        weights=WEIGHTS_PATH,
-        pose_weights=POSE_WEIGHTS,
-        predictor=predictor,
-        keypoint_predictor=keypoint_predictor,
-        batch_size=BATCH_SIZE
+        directory_path=target_image_dir,
+        download_path=download_path,
+        search_type=search_type,
+        search_term=search_term
     )
 
 if __name__ == "__main__":
