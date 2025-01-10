@@ -64,7 +64,7 @@ def classify_images(root, append_status, download_directory_var, search_term, us
     append_status(f"[{search_type.upper()}] {search_term} 디렉토리 분류를 시작합니다.")
     print(f"[{search_type.upper()}] {search_term} 디렉토리 분류 시작")
 
-    result = run_classification_process(python_executable, classifier_script, target_image_dir, stop_event, append_status)
+    result = run_classification_process(python_executable, classifier_script, target_image_dir, stop_event, append_status, search_type, search_term, download_path)
     
     if result is None:
         append_status("오류: 분류 프로세스가 중지되었거나 실행에 실패했습니다.")
