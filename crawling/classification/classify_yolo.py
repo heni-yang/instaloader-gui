@@ -367,8 +367,8 @@ def classify_images(directory_path, download_path, search_type, search_term):
     keypoint_predictor = DefaultPredictor(cfg_kp)
 
     # 최종 이동 폴더
-    human_dir = os.path.join(download_path, "인물", f"{search_type}_{search_term}", "Image")
-    non_human_dir = os.path.join(download_path, "비인물", f"{search_type}_{search_term}", "Image")
+    human_dir = os.path.join(download_path, "인물", f"{search_type}_{search_term}")
+    non_human_dir = os.path.join(download_path, "비인물", f"{search_type}_{search_term}")
     os.makedirs(human_dir, exist_ok=True)
     os.makedirs(non_human_dir, exist_ok=True)
     
