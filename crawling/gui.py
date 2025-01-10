@@ -531,8 +531,8 @@ def main_gui():
             append_status(f"오류: 다운로드 경로가 존재하지 않습니다: {download_path}")
             return
 
-        hashtag_dir = os.path.join(download_path, 'hashtag')
-        user_id_dir = os.path.join(download_path, 'ID')
+        hashtag_dir = os.path.join(download_path, 'unclassified', 'hashtag')
+        user_id_dir = os.path.join(download_path, 'unclassified', 'ID')
 
         if not os.path.isdir(hashtag_dir) and not os.path.isdir(user_id_dir):
             append_status(f"오류: 해시태그 또는 사용자 ID 디렉토리가 존재하지 않습니다: {download_path}")
