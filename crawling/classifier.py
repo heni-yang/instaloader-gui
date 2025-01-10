@@ -6,7 +6,7 @@ CLASSIFY_SCRIPT_NAME = 'classify_yolo.py'
 # classification 디렉토리에 스크립트가 있다고 가정
 CLASSIFY_SCRIPT_REL_PATH = os.path.join('classification', CLASSIFY_SCRIPT_NAME)
 
-def run_classification_process(python_executable, classifier_script, target_image_dir, stop_event, append_status):
+def run_classification_process(python_executable, classifier_script, target_image_dir, stop_event, append_status, search_type, search_term, download_path):
     try:
         process = subprocess.Popen(
             [python_executable, classifier_script, target_image_dir],
