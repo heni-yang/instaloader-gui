@@ -129,7 +129,7 @@ def user_download_with_profiles(L, search_user, target, include_images, include_
                     return False
 
             L_content = L
-            content_folder = os.path.join(base_path, 'ID', search_user, 'Image')
+            content_folder = os.path.join(base_path, "unclassified", 'ID', search_user, 'Image')
             L_content.dirname_pattern = content_folder
             os.makedirs(content_folder, exist_ok=True)
 
@@ -204,6 +204,17 @@ def crawl_and_download(
     base_download_path = os.path.join(os.getcwd(), download_path)
     os.makedirs(base_download_path, exist_ok=True)
 
+    # 세부 폴더 구조 (unclassified, Reels, 인물, 비인물)
+    unclassified_path = os.path.join(base_download_path, "unclassified")
+    reels_path = os.path.join(base_download_path, "Reels")
+    people_path = os.path.join(base_download_path, "인물")
+    non_people_path = os.path.join(base_download_path, "비인물")
+
+    os.makedirs(unclassified_path, exist_ok=True)
+    os.makedirs(reels_path, exist_ok=True)
+    os.makedirs(people_path, exist_ok=True)
+    os.makedirs(non_people_path, exist_ok=True)
+    
     loaded_loaders = []
     if not accounts:
         loader = instaloader.Instaloader(
@@ -213,7 +224,7 @@ def crawl_and_download(
             download_comments=False,
             save_metadata=False,
             post_metadata_txt_pattern='',
-            dirname_pattern=base_download_path,
+            dirname_pattern=unclassified_path,
             rate_controller=lambda context: RateController(context)  
         )
         loaded_loaders.append({
@@ -227,7 +238,7 @@ def crawl_and_download(
             loader = instaloader_login(
                 account['INSTAGRAM_USERNAME'], 
                 account['INSTAGRAM_PASSWORD'], 
-                base_download_path,
+                unclassified_path,
                 include_videos,
                 include_reels
             )
@@ -279,9 +290,9 @@ def crawl_and_download(
                 # 인물 분류 수행 전에 파일 존재 여부 확인
                 if include_human_classify and not stop_event.is_set():
                     if search_type == 'hashtag':
-                        classify_dir = os.path.join(base_download_path, 'hashtag', term, 'Image')
+                        classify_dir = os.path.join(unclassified_path, 'hashtag', term, 'Image')
                     else:
-                        classify_dir = os.path.join(base_download_path, 'ID', term, 'Image')
+                        classify_dir = os.path.join(unclassified_path, 'ID', term, 'Image')
                     
                     # 이미지 파일 존재 여부 확인
                     has_images = False
@@ -310,7 +321,7 @@ def crawl_and_download(
             new_loader = instaloader_login(
                 loader_dict['username'],
                 loader_dict['password'],
-                base_download_path,
+                unclassified_path,
                 include_videos,
                 include_reels
             )
