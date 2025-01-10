@@ -22,8 +22,6 @@ def run_classification_process(python_executable, classifier_script, target_imag
             text=True,
             encoding='utf-8',
             shell=False,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE
         )
         
         append_status(f"분류 프로세스 시작: {' '.join([python_executable, classifier_script, target_image_dir])}")
