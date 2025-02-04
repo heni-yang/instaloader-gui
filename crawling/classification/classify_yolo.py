@@ -19,6 +19,7 @@ from detectron2 import model_zoo
 ##############################################
 PERSON_CONF_THRESHOLD_YOLO = 0.98
 PERSON_CONF_THRESHOLD_DETECTRON = 0.98
+# 기존 PERSON_SIZE_THRESHOLD 대신 후처리 필터 기준을 추가합니다.
 PERSON_SIZE_THRESHOLD = 0.65
 
 FACE_CONF_THRESHOLD_YOLO_POSE = 0.5
@@ -281,18 +282,30 @@ def detect_yolo_pose_body(yolo_pose_result):
 # 로직 구현
 ##############################################
 def logic1_person(yolo_result, predictor, image, img_area):
+    # YOLO와 Detectron2 결과를 앙상블한 후, 추가 필터링 (크기, 종횡비, 중심 위치 등) 적용
     yolo_dets = detect_person_yolo(yolo_result, img_area)
     rcnn_dets = detect_person_detectron(predictor, image, img_area)
-
     final_dets = ensemble_detections(yolo_dets, rcnn_dets, iou_threshold=0.4)
+    
+    h, w = image.shape[:2]
     filtered = []
     for cls_id, conf, bbox, source in final_dets:
-        w = bbox[2] - bbox[0]
-        h = bbox[3] - bbox[1]
-        area = w * h
-        ratio = area / img_area
-        if ratio >= PERSON_SIZE_THRESHOLD:
-            filtered.append((cls_id, conf, bbox, source))
+        # 기존 크기 임계값 체크 (너무 작은 박스는 무시)
+        box_w = bbox[2] - bbox[0]
+        box_h = bbox[3] - bbox[1]
+        box_area = box_w * box_h
+        area_ratio = box_area / img_area
+        if area_ratio < PERSON_SIZE_THRESHOLD:
+            continue
+        # 추가: bounding box의 크기, 종횡비, 중심 위치 등을 점검
+        if not is_valid_bbox(bbox, img_area, min_ratio=0.05, max_ratio=0.9):
+            continue
+        if not is_aspect_ratio_valid(bbox, aspect_ratio_range=(0.3, 3.0)):
+            continue
+        # (선택 사항) 이미지 중심에 가까운 경우를 우대할 수 있음
+        # if not is_centered(bbox, w, h, center_threshold=0.5):
+        #     continue
+        filtered.append((cls_id, conf, bbox, source))
     return filtered
 
 def logic2_face(yolo_pose_result, rcnn_kps, img_area):
@@ -302,7 +315,7 @@ def logic2_face(yolo_pose_result, rcnn_kps, img_area):
         return []
     nose = merged[HUMAN_KEYPOINTS['nose']]
     left_eye = merged[HUMAN_KEYPOINTS['left_eye']]
-    right_eye= merged[HUMAN_KEYPOINTS['right_eye']]
+    right_eye = merged[HUMAN_KEYPOINTS['right_eye']]
 
     if nose[2] > 0 and left_eye[2] > 0 and right_eye[2] > 0:
         face_area = estimate_face_area(nose, left_eye, right_eye)
@@ -318,7 +331,7 @@ def logic3_body(yolo_pose_result, rcnn_kps, img_area):
         return []
     
     # 손목을 제외한 필수 바디 키포인트 정의 (예: 어깨, 엘보우, 힙, 무릎, 발목)
-    ESSENTIAL_BODY_KEYPOINTS = [5, 6, 7, 8, 11, 12, 13, 14, 15, 16]  # 어깨, 엘보우, 힙, 무릎, 발목
+    ESSENTIAL_BODY_KEYPOINTS = [5, 6, 7, 8, 11, 12, 13, 14, 15, 16]
     
     # 신뢰도가 높은 필수 키포인트 수 계산
     essential_detected = [
@@ -326,9 +339,7 @@ def logic3_body(yolo_pose_result, rcnn_kps, img_area):
         if idx in ESSENTIAL_BODY_KEYPOINTS and kp[2] >= KEYPOINT_CONFIDENCE_THRESHOLD
     ]
     
-    # 최소 필수 키포인트 수 설정
     MIN_ESSENTIAL_KEYPOINTS = 4
-    
     if len(essential_detected) < MIN_ESSENTIAL_KEYPOINTS:
         return []
     
@@ -339,12 +350,32 @@ def logic3_body(yolo_pose_result, rcnn_kps, img_area):
     return []
 
 ##############################################
+# 추가 기능: webp 파일을 jpg로 변환
+##############################################
+def convert_webp_to_jpg(webp_path):
+    """
+    webp 파일을 열어 jpg로 변환한 후, jpg 파일 경로를 반환합니다.
+    변환에 성공하면 원본 webp 파일은 삭제할 수도 있습니다.
+    """
+    try:
+        with Image.open(webp_path) as img:
+            img = img.convert("RGB")
+            jpg_path = os.path.splitext(webp_path)[0] + ".jpg"
+            img.save(jpg_path, "JPEG")
+        # 원본 webp 파일을 삭제하고 싶다면 아래 주석을 해제합니다.
+        # os.remove(webp_path)
+        return jpg_path
+    except Exception as e:
+        logging.error(f"webp -> jpg 변환 실패: {webp_path} - {e}")
+        return None
+
+##############################################
 # 여기서부터 최상위 디렉토리만 처리하도록 수정
 ##############################################
 def classify_images(directory_path, download_path, search_type, search_term):
     """
-    directory_path: unclassified/.../Image 폴더 (분류 대상)
-    download_path : 최상위 download 폴더
+    directory_path: 분류 대상 이미지가 있는 폴더 (최상위 디렉토리만 처리)
+    download_path : 결과 파일이 저장될 최상위 download 폴더
     search_type   : "hashtag" or "ID"
     search_term   : 검색어
     """
@@ -374,26 +405,21 @@ def classify_images(directory_path, download_path, search_type, search_term):
     
     image_paths = []
     
-    #--------------------------------------------------------
-    # os.walk()를 사용하되, 기본은 "최상위 디렉토리"만 처리
-    #--------------------------------------------------------
+    # 최상위 디렉토리 내 파일만 처리 (하위 디렉토리는 무시)
     for root, dirs, files in os.walk(directory_path):
-        # --- (1) 하위 디렉토리 무시하기 ---
-        # ※ 만약 "하위 디렉토리"도 재귀적으로 처리해야 한다면,
-        #    아래 두 줄을 주석 처리하거나 제거하면 됩니다.
-        dirs[:] = []  # 하위 디렉토리 진입 차단
-        # break로 한 번만 순회하고 종료
-        # 만약 "여러 디렉토리(같은 레벨)"를 모두 처리하고 싶다면
-        # 이 break를 제거하세요.
-        # (다만 최상위 레벨 여러 폴더가 있을 경우는 break 제거)
-        
+        # 하위 디렉토리 진입 차단
+        dirs[:] = []
         for f in files:
-            if f.lower().endswith(('.jpg', '.jpeg', '.png')):
-                image_paths.append(os.path.join(root, f))
-        
-        # 최상위 한 레벨만 돌고 종료
-        break
-    #--------------------------------------------------------
+            ext = os.path.splitext(f)[1].lower()
+            full_path = os.path.join(root, f)
+            if ext in ('.jpg', '.jpeg', '.png'):
+                image_paths.append(full_path)
+            elif ext == '.webp':
+                # webp 파일이면 jpg로 변환 후 경로 추가
+                converted_path = convert_webp_to_jpg(full_path)
+                if converted_path:
+                    image_paths.append(converted_path)
+        break  # 최상위 디렉토리만 순회
 
     for i in range(0, len(image_paths), BATCH_SIZE):
         batch = image_paths[i:i+BATCH_SIZE]
