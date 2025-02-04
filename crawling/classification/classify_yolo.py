@@ -363,7 +363,7 @@ def convert_webp_to_jpg(webp_path):
             jpg_path = os.path.splitext(webp_path)[0] + ".jpg"
             img.save(jpg_path, "JPEG")
         # 원본 webp 파일을 삭제하고 싶다면 아래 주석을 해제합니다.
-        # os.remove(webp_path)
+        os.remove(webp_path)
         return jpg_path
     except Exception as e:
         logging.error(f"webp -> jpg 변환 실패: {webp_path} - {e}")
