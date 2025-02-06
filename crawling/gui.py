@@ -6,9 +6,6 @@ from queue import Queue, Empty
 from crawling.config import load_config, save_config
 from crawling.downloader import crawl_and_download
 from crawling.classifier import classify_images
-import subprocess
-import configparser
-from datetime import datetime
 
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 DEFAULT_DOWNLOAD_PATH = os.path.join(PROJECT_ROOT, 'download')
@@ -120,11 +117,11 @@ def main_gui():
             # 계정 추가 시, 계정 정보만 저장
             save_config(
                 loaded_accounts,
-                saved_search_type,
-                saved_search_terms,
-                saved_include_images,
-                saved_include_videos,
-                saved_include_reels
+                saved_search_type,    # 기존 설정 유지
+                saved_search_terms,   # 기존 설정 유지
+                saved_include_images, # 기존 설정 유지
+                saved_include_videos, # 기존 설정 유지
+                saved_include_reels   # 기존 설정 유지
             )
             append_status(f"정보: 새로운 계정 '{username}'이 추가되었습니다.")
             add_window.destroy()
@@ -146,11 +143,11 @@ def main_gui():
         # 계정 제거 시, 계정 정보만 저장
         save_config(
             loaded_accounts,
-            saved_search_type,
-            saved_search_terms,
-            saved_include_images,
-            saved_include_videos,
-            saved_include_reels
+            saved_search_type,    # 기존 설정 유지
+            saved_search_terms,   # 기존 설정 유지
+            saved_include_images, # 기존 설정 유지
+            saved_include_videos, # 기존 설정 유지
+            saved_include_reels   # 기존 설정 유지
         )
         load_existing_directories()
 
@@ -182,22 +179,22 @@ def main_gui():
     include_human_classify_var_hashtag = tk.BooleanVar(value=False)
 
     include_images_check_hashtag = ttk.Checkbutton(
-        hashtag_check_frame,
-        text="이미지",
+        hashtag_check_frame, 
+        text="이미지", 
         variable=include_images_var_hashtag
     )
     include_images_check_hashtag.pack(side='left', padx=(0,5))
 
     include_videos_check_hashtag = ttk.Checkbutton(
-        hashtag_check_frame,
-        text="영상",
+        hashtag_check_frame, 
+        text="영상", 
         variable=include_videos_var_hashtag
     )
     include_videos_check_hashtag.pack(side='left')
 
     include_human_classify_check_hashtag = ttk.Checkbutton(
-        hashtag_frame,
-        text="인물 분류",
+        hashtag_frame, 
+        text="인물 분류", 
         variable=include_human_classify_var_hashtag
     )
     include_human_classify_check_hashtag.grid(row=2, column=0, sticky='w', padx=20)
@@ -218,27 +215,28 @@ def main_gui():
     include_human_classify_var_user = tk.BooleanVar(value=False)
 
     include_images_check_user = ttk.Checkbutton(
-        user_id_check_frame,
-        text="이미지",
+        user_id_check_frame, 
+        text="이미지", 
         variable=include_images_var_user
     )
     include_images_check_user.pack(side='left', padx=(0,5))
 
     include_reels_check_user = ttk.Checkbutton(
-        user_id_check_frame,
-        text="릴스",
+        user_id_check_frame, 
+        text="릴스", 
         variable=include_reels_var_user
     )
     include_reels_check_user.pack(side='left')
 
     include_human_classify_check_user = ttk.Checkbutton(
-        user_id_frame,
-        text="인물 분류",
+        user_id_frame, 
+        text="인물 분류", 
         variable=include_human_classify_var_user
     )
     include_human_classify_check_user.grid(row=2, column=0, sticky='w', padx=20)
     include_human_classify_check_user.configure(state='disabled')
 
+    # 1. "중복 다운로드 허용" 체크박스 추가
     allow_duplicate_var = tk.BooleanVar(value=False)
     allow_duplicate_check = ttk.Checkbutton(
         search_type_frame,
@@ -266,7 +264,7 @@ def main_gui():
             include_images_check_hashtag.configure(state='normal')
             include_videos_check_hashtag.configure(state='normal')
             toggle_human_classify(hashtag_frame, include_images_var_hashtag, include_human_classify_var_hashtag)
-
+            
             include_images_check_user.configure(state='disabled')
             include_reels_check_user.configure(state='disabled')
             include_human_classify_var_user.set(False)
@@ -275,7 +273,7 @@ def main_gui():
             include_images_check_user.configure(state='normal')
             include_reels_check_user.configure(state='normal')
             toggle_human_classify(user_id_frame, include_images_var_user, include_human_classify_var_user)
-
+            
             include_images_check_hashtag.configure(state='disabled')
             include_videos_check_hashtag.configure(state='disabled')
             include_human_classify_var_hashtag.set(False)
@@ -306,39 +304,27 @@ def main_gui():
     download_dir_entry = ttk.Entry(download_dir_frame, textvariable=download_directory_var, width=50, font=('Arial', 10))
     download_dir_entry.grid(row=0, column=1, sticky='ew', padx=10, pady=5)
 
-    def open_download_directory():
-        directory = download_directory_var.get()
-        if os.path.isdir(directory):
-            if os.name == 'nt':  # Windows
-                os.startfile(directory)
-            else:
-                subprocess.Popen(["open", directory])  # macOS는 open, 리눅스는 xdg-open 등으로 교체
-        else:
-            append_status("오류: 다운로드 디렉토리가 존재하지 않습니다.")
-
     def select_download_directory_main():
         directory = filedialog.askdirectory(initialdir=DEFAULT_DOWNLOAD_PATH)
         if directory:
             download_directory_var.set(directory)
             load_existing_directories()
+            # 다운로드 경로 변경 시, 모든 계정의 DOWNLOAD_PATH를 업데이트하고 저장
             for acc in loaded_accounts:
                 acc['DOWNLOAD_PATH'] = directory
             save_config(
                 loaded_accounts,
-                saved_search_type,
-                saved_search_terms,
-                saved_include_images,
-                saved_include_videos,
-                saved_include_reels
+                saved_search_type,    # 기존 설정 유지
+                saved_search_terms,   # 기존 설정 유지
+                saved_include_images, # 기존 설정 유지
+                saved_include_videos, # 기존 설정 유지
+                saved_include_reels   # 기존 설정 유지
             )
             append_status("정보: 다운로드 경로가 변경되었습니다.")
             print("다운로드 경로가 변경되어 모든 계정의 DOWNLOAD_PATH가 업데이트되었습니다.")
 
     select_dir_button_main = ttk.Button(download_dir_frame, text="경로 선택", command=select_download_directory_main, width=12)
     select_dir_button_main.grid(row=0, column=2, padx=5, pady=5)
-
-    open_dir_button_main = ttk.Button(download_dir_frame, text="폴더 열기", command=open_download_directory, width=12)
-    open_dir_button_main.grid(row=0, column=3, padx=5, pady=5)
 
     existing_dirs_frame = ttk.LabelFrame(root, text="기존 다운로드 디렉토리", padding=5)
     existing_dirs_frame.grid(row=4, column=0, padx=10, pady=10, sticky='nsew')
@@ -393,6 +379,8 @@ def main_gui():
         word_text.delete("1.0", tk.END)
         word_text.insert(tk.END, updated_text)
         append_status(f"성공: {len(selected_hashtags)}개의 해시태그가 검색 목록에 추가되었습니다.")
+        # 설정 저장 기능 제거 (실시간 저장 제거)
+        # save_current_config()
 
     def add_selected_user_ids():
         selected_indices = user_id_listbox.curselection()
@@ -407,8 +395,9 @@ def main_gui():
         else:
             updated_text = new_terms
         word_text.delete("1.0", tk.END)
-        word_text.insert(tk.END, updated_text)
+        word_text.insert(tk.END, new_terms)
         append_status(f"성공: {len(selected_user_ids)}개의 사용자 ID가 검색 목록에 추가되었습니다.")
+        # 설정 저장 기능 제거 (실시간 저장 제거)
 
     def add_all_hashtags():
         all_hashtags = hashtag_listbox.get(0, tk.END)
@@ -424,6 +413,7 @@ def main_gui():
         word_text.delete("1.0", tk.END)
         word_text.insert(tk.END, updated_text)
         append_status("성공: 모든 해시태그가 검색 목록에 추가되었습니다.")
+        # 설정 저장 기능 제거 (실시간 저장 제거)
 
     def add_all_user_ids():
         all_user_ids = user_id_listbox.get(0, tk.END)
@@ -437,8 +427,9 @@ def main_gui():
         else:
             updated_text = new_terms
         word_text.delete("1.0", tk.END)
-        word_text.insert(tk.END, updated_text)
+        word_text.insert(tk.END, new_terms)
         append_status("성공: 모든 사용자 ID가 검색 목록에 추가되었습니다.")
+        # 설정 저장 기능 제거 (실시간 저장 제거)
 
     add_selected_hashtags_button = ttk.Button(selection_buttons_frame, text="선택된 해시태그 추가", command=add_selected_hashtags)
     add_selected_hashtags_button.grid(row=0, column=0, padx=5, pady=2, sticky='ew')
@@ -452,89 +443,8 @@ def main_gui():
     add_all_user_ids_button = ttk.Button(selection_buttons_frame, text="모든 사용자 ID 추가", command=add_all_user_ids)
     add_all_user_ids_button.grid(row=1, column=1, padx=5, pady=2, sticky='ew')
 
-    ### 기존: (uid, ctime, mtime) 형태로 캐싱
-    ### INI 정렬도 해야 하므로 기존 구조는 유지하되, "수정일 오름차순" 버튼에서만 ini로 정렬 로직을 수행
-    user_ids_cached = []
-
-    def sort_user_ids_by_creation_desc():
-        """생성일(ctime) 기준 내림차순 정렬 (기존 방식)"""
-        user_id_listbox.delete(0, tk.END)
-        sorted_ids = sorted(user_ids_cached, key=lambda x: x[1], reverse=True)  # ctime desc
-        for uid, ctime_val, mtime_val in sorted_ids:
-            user_id_listbox.insert(tk.END, uid)
-        append_status("정보: 사용자 ID가 '생성일' 기준 내림차순으로 정렬되었습니다.")
-
-    ### 변경점 시작: INI 파일의 post-timestamp 에 따라 오름차순 정렬
-    def sort_user_ids_by_modified_asc():
-        """
-        latest-stamps-images.ini 파일에서 [uid] 섹션의 post-timestamp를 읽어,
-        오래된 순(오름차순)으로 정렬한다.
-        디렉토리가 없더라도 ini에 타임스탬프가 있는 uid는 포함됩니다.
-        """
-        ini_path = os.path.join(os.path.dirname(__file__), 'latest-stamps-images.ini')
-        if not os.path.isfile(ini_path):
-            append_status("오류: latest-stamps-images.ini 파일을 찾을 수 없습니다.")
-            return
-
-        config = configparser.ConfigParser()
-        config.read(ini_path, encoding='utf-8')
-
-        # INI 파일로부터 uid별 타임스탬프 읽기
-        ini_timestamps = {}
-        for section in config.sections():
-            if config[section].get('post-timestamp'):
-                raw_ts = config[section]['post-timestamp'].strip()
-                dt_obj = None
-                try:
-                    dt_obj = datetime.strptime(raw_ts, "%Y-%m-%dT%H:%M:%S.%f%z")
-                except ValueError:
-                    try:
-                        dt_obj = datetime.fromisoformat(raw_ts)
-                    except Exception as e:
-                        pass
-                if dt_obj:
-                    ini_timestamps[section] = dt_obj
-
-        # 기존 디렉토리에서 캐싱된 uid 목록 (실제 디렉토리가 있는 경우)
-        uids_from_dirs = {uid for uid, _, _ in user_ids_cached}
-        # INI 파일에 기록된 uid 목록
-        uids_from_ini = set(ini_timestamps.keys())
-        # 두 집합의 합집합: 실제 디렉토가 있거나 INI에 기록된 uid 모두 포함
-        combined_uids = uids_from_dirs.union(uids_from_ini)
-
-        # 각 uid에 대해 ini 타임스탬프가 있으면 사용, 없으면 None 처리
-        user_list = [(uid, ini_timestamps.get(uid)) for uid in combined_uids]
-
-        # 타임스탬프가 있는 것과 없는 것으로 분리
-        user_list_with_ts = [item for item in user_list if item[1] is not None]
-        user_list_without_ts = [item for item in user_list if item[1] is None]
-
-        # 타임스탬프가 있는 항목만 오래된 순(오름차순) 정렬
-        user_list_with_ts.sort(key=lambda x: x[1])
-        final_sorted = user_list_with_ts + user_list_without_ts
-
-        user_id_listbox.delete(0, tk.END)
-        for uid, _ in final_sorted:
-            user_id_listbox.insert(tk.END, uid)
-
-        append_status("정보: INI의 post-timestamp 기준으로 오래된 순 정렬 완료.")
-    ### 변경점 끝
-
-    sort_buttons_frame = ttk.Frame(existing_dirs_frame)
-    sort_buttons_frame.grid(row=1, column=1, padx=5, pady=2, sticky='nsew')
-    sort_buttons_frame.columnconfigure(0, weight=1)
-    sort_buttons_frame.columnconfigure(1, weight=1)
-
-    # 기존 (생성일 내림차순) 버튼
-    sort_ctime_desc_button = ttk.Button(sort_buttons_frame, text="생성일 내림차순", command=sort_user_ids_by_creation_desc)
-    sort_ctime_desc_button.grid(row=0, column=0, padx=5, pady=2, sticky='ew')
-
-    # 수정: ini post-timestamp 기반 오래된 순
-    sort_mtime_asc_button = ttk.Button(sort_buttons_frame, text="(INI) 오름차순", command=sort_user_ids_by_modified_asc)
-    sort_mtime_asc_button.grid(row=0, column=1, padx=5, pady=2, sticky='ew')
-
     refresh_button = ttk.Button(existing_dirs_frame, text="새로 고침", command=lambda: load_existing_directories(), width=15)
-    refresh_button.grid(row=1, column=0, pady=5)
+    refresh_button.grid(row=1, column=0, columnspan=3, pady=5)
 
     progress_frame = ttk.Frame(root)
     progress_frame.grid(row=6, column=0, padx=10, pady=5, sticky='ew')
@@ -571,21 +481,27 @@ def main_gui():
         for tag in hashtags:
             hashtag_listbox.insert(tk.END, tag)
 
-        nonlocal user_ids_cached
-        user_ids_cached = []
+        user_ids = []
+        user_ids_with_error = []
+
         for d in os.listdir(user_id_dir):
             dir_path = os.path.join(user_id_dir, d)
             if os.path.isdir(dir_path):
                 try:
                     creation_time = os.path.getctime(dir_path)
-                    modified_time = os.path.getmtime(dir_path)
-                    user_ids_cached.append((d, creation_time, modified_time))
+                    user_ids.append((d, creation_time))
                 except Exception as e:
-                    append_status(f"경고: 디렉토리 '{d}'의 생성/수정일을 가져오는 중 오류: {e}")
+                    append_status(f"경고: 디렉토리 '{d}'의 생성일을 가져오는 중 오류 발생: {e}")
+                    user_ids_with_error.append((d, 0))  # 생성 시간을 가져오지 못한 디렉토리는 기본값 0으로 추가
 
-        # 기본은 '생성일 내림차순' 정렬로 보여주기
-        user_ids_sorted = sorted(user_ids_cached, key=lambda x: x[1], reverse=True)
-        for uid, ctime_val, mtime_val in user_ids_sorted:
+        # 생성일 기준으로 정렬 (내림차순: 최신 먼저)
+        user_ids_sorted = sorted(user_ids, key=lambda x: x[1], reverse=True)
+
+        # 오류가 발생한 디렉토리를 하단에 추가 (생성 시간이 0이므로 이미 하단에 위치)
+        user_ids_sorted.extend(sorted(user_ids_with_error, key=lambda x: x[1], reverse=True))
+
+        # 정렬된 사용자 ID를 리스트박스에 추가
+        for uid, _ in user_ids_sorted:
             user_id_listbox.insert(tk.END, uid)
 
     def process_queue(progress_queue):
@@ -706,6 +622,7 @@ def main_gui():
         include_videos = include_videos_var_hashtag.get() if search_type == "hashtag" else False
         include_reels = include_reels_var_user.get() if search_type == "user" else False
 
+        # 2. "중복 다운로드 허용" 체크박스 상태 가져오기
         allow_duplicate = allow_duplicate_var.get()
 
         download_path = download_directory_var.get().strip()
@@ -713,6 +630,7 @@ def main_gui():
             append_status(f"오류: 다운로드 경로가 존재하지 않습니다: {download_path}")
             return
 
+        # 크롤링 시작 전에 전체 설정 저장
         save_config(
             loaded_accounts,
             search_type,
@@ -745,7 +663,7 @@ def main_gui():
                 download_directory_var,
                 include_human_classify_var_hashtag,
                 include_human_classify_var_user,
-                allow_duplicate
+                allow_duplicate  # 'allow_duplicate' 인자 추가
             ),
             daemon=True
         ).start()
@@ -786,6 +704,12 @@ def main_gui():
         toggle_human_classify(user_id_frame, include_images_var_user, include_human_classify_var_user)
 
     initial_toggle()
+
+    # 검색어 변경 시 설정 저장 기능 제거 (실시간 저장 기능 제거)
+    # def on_word_text_change(event):
+    #     save_current_config()
+
+    # word_text.bind("<KeyRelease>", on_word_text_change)
 
     root.rowconfigure(7, weight=1)
     root.columnconfigure(0, weight=1)
