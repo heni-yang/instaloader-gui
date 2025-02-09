@@ -405,21 +405,41 @@ def classify_images(directory_path, download_path, search_type, search_term):
     
     image_paths = []
     
-    # 최상위 디렉토리 내 파일만 처리 (하위 디렉토리는 무시)
+    # ============================================
+    # 1. webp 파일 변환 단계
+    # --------------------------------------------
+    # 기본적으로 최상위 디렉토리만 처리합니다.
+    # 하위 디렉토리까지 처리하려면 아래 'dirs[:] = []'와 'break' 주석을 해제하세요.
+    # ※ 하위 디렉토리 처리 활성화: 'dirs[:] = []'와 'break'를 주석 처리 또는 삭제.
+    # ============================================
     for root, dirs, files in os.walk(directory_path):
-        # 하위 디렉토리 진입 차단
-        dirs[:] = []
-        for f in files:
-            ext = os.path.splitext(f)[1].lower()
-            full_path = os.path.join(root, f)
-            if ext in ('.jpg', '.jpeg', '.png'):
-                image_paths.append(full_path)
-            elif ext == '.webp':
-                # webp 파일이면 jpg로 변환 후 경로 추가
+        dirs[:] = []  # ※ 하위 디렉토리 처리를 원하지 않으면 이 줄을 활성화하세요.
+        for file in files:
+            full_path = os.path.join(root, file)
+            ext = os.path.splitext(file)[1].lower()
+            if ext == '.webp':
                 converted_path = convert_webp_to_jpg(full_path)
                 if converted_path:
-                    image_paths.append(converted_path)
-        break  # 최상위 디렉토리만 순회
+                    logging.info(f"Converted {full_path} to {converted_path}")
+                else:
+                    logging.error(f"Failed to convert {full_path}")
+        break  # ※ 하위 디렉토리까지 처리하려면 이 줄을 주석 처리하거나 삭제하세요.
+
+    # ============================================
+    # 2. 이미지 파일 수집 단계 (jpg, jpeg, png)
+    # --------------------------------------------
+    # 기본적으로 최상위 디렉토리만 처리합니다.
+    # 하위 디렉토리까지 처리하려면 아래 'dirs[:] = []'와 'break' 주석을 해제하세요.
+    # ============================================
+    for root, dirs, files in os.walk(directory_path):
+        dirs[:] = []  # ※ 하위 디렉토리 처리를 원하지 않으면 이 줄을 활성화하세요.
+        for file in files:
+            full_path = os.path.join(root, file)
+            ext = os.path.splitext(file)[1].lower()
+            if ext in ('.jpg', '.jpeg', '.png'):
+                image_paths.append(full_path)
+        break  # ※ 하위 디렉토리까지 처리하려면 이 줄을 주석 처리하거나 삭제하세요.
+
 
     for i in range(0, len(image_paths), BATCH_SIZE):
         batch = image_paths[i:i+BATCH_SIZE]
