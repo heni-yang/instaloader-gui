@@ -111,7 +111,7 @@ def download_posts(L, username, search_term, search_type, target, include_images
         print(f"{search_term} 다운로드 중 에러 발생: {e}")
         progress_queue.put(("account_switch_needed", username))
 
-def user_download_with_profiles(L, search_user, target, include_images, include_reels, progress_queue, stop_event, allow_duplicate, base_path):
+def user_download_with_profiles(L, search_user, target, include_images, include_reels, progress_queue, stop_event, allow_duplicate, base_path, search_type):
     def download_content():
         nonlocal search_user, allow_duplicate, base_path
         try:
@@ -129,21 +129,94 @@ def user_download_with_profiles(L, search_user, target, include_images, include_
                     return False
 
             L_content = L
-            content_folder = os.path.join(base_path, "unclassified", 'ID', search_user, 'Image')
+            content_folder = os.path.join(base_path, "unclassified", "ID", search_user, "Image")
             L_content.dirname_pattern = content_folder
             os.makedirs(content_folder, exist_ok=True)
 
-            list_of_users = [search_user]
-            profiles = [instaloader.Profile.from_username(L_content.context, user) for user in list_of_users]
-            profile_usernames = {profile.username.lower() for profile in profiles}
-
-            profile = Profile.from_username(L_content.context, search_user)
-                
             if allow_duplicate:
                 latest_stamps_images = None
             else:
                 latest_stamps_images = LatestStamps(STAMPS_FILE_IMAGES)
                 latest_stamps_reels = LatestStamps(STAMPS_FILE_REELS)
+
+            # old_username를 별도로 저장
+            old_username = search_user
+
+            # 최신 프로필 조회 (저장된 profile-id 사용)
+            if latest_stamps_images is not None:
+                stored_id = latest_stamps_images.get_profile_id(old_username)
+                if stored_id:
+                    try:
+                        profile = Profile.from_id(L_content.context, stored_id)
+                        if profile.username != old_username:
+                            # ini 파일 업데이트: 섹션명을 변경
+                            latest_stamps_images.rename_profile(old_username, profile.username)
+                            print(f"사용자명 변경 감지: '{old_username}' -> '{profile.username}'")
+                            
+                            # 디렉토리 rename 작업: 부모 폴더 전체를 rename하여 하위 폴더도 함께 변경
+                            old_image_dir = os.path.join(base_path, "unclassified", "ID", old_username)
+                            new_image_dir = os.path.join(base_path, "unclassified", "ID", profile.username)
+                            if os.path.exists(old_image_dir):
+                                if not os.path.exists(new_image_dir):
+                                    os.rename(old_image_dir, new_image_dir)
+                                    print(f"다운로드 이미지 디렉토리 이름 변경: '{old_image_dir}' -> '{new_image_dir}'")
+                                else:
+                                    print(f"새 이미지 디렉토리 이미 존재함: '{new_image_dir}'")
+                            else:
+                                print(f"원본 이미지 디렉토리 존재하지 않음: '{old_image_dir}'")
+                            
+                            old_reels_dir = os.path.join(base_path, "Reels", "ID", old_username)
+                            new_reels_dir = os.path.join(base_path, "Reels", "ID", profile.username)
+                            if os.path.exists(old_reels_dir):
+                                if not os.path.exists(new_reels_dir):
+                                    os.rename(old_reels_dir, new_reels_dir)
+                                    print(f"다운로드 Reels 디렉토리 이름 변경: '{old_reels_dir}' -> '{new_reels_dir}'")
+                                else:
+                                    print(f"새 Reels 디렉토리 이미 존재함: '{new_reels_dir}'")
+                            else:
+                                print(f"원본 Reels 디렉토리 존재하지 않음: '{old_reels_dir}'")
+                            
+                            old_people_dir = os.path.join(base_path, "인물", f"{search_type}_{old_username}")
+                            new_people_dir = os.path.join(base_path, "인물", f"{search_type}_{profile.username}")
+                            if os.path.exists(old_people_dir):
+                                if not os.path.exists(new_people_dir):
+                                    os.rename(old_people_dir, new_people_dir)
+                                    print(f"인물 디렉토리 이름 변경: '{old_people_dir}' -> '{new_people_dir}'")
+                                else:
+                                    print(f"새 인물 디렉토리 이미 존재함: '{new_people_dir}'")
+                            else:
+                                print(f"원본 인물 디렉토리 존재하지 않음: '{old_people_dir}'")
+                            
+                            old_non_people_dir = os.path.join(base_path, "비인물", f"{search_type}_{old_username}")
+                            new_non_people_dir = os.path.join(base_path, "비인물", f"{search_type}_{profile.username}")
+                            if os.path.exists(old_non_people_dir):
+                                if not os.path.exists(new_non_people_dir):
+                                    os.rename(old_non_people_dir, new_non_people_dir)
+                                    print(f"비인물 디렉토리 이름 변경: '{old_non_people_dir}' -> '{new_non_people_dir}'")
+                                else:
+                                    print(f"새 비인물 디렉토리 이미 존재함: '{new_non_people_dir}'")
+                            else:
+                                print(f"원본 비인물 디렉토리 존재하지 않음: '{old_non_people_dir}'")
+                            
+                            # 업데이트 후 search_user 변수도 새 사용자명으로 변경
+                            search_user = profile.username
+                        else:
+                            # 사용자명이 같으면 그냥 profile 객체 사용
+                            profile = Profile.from_id(L_content.context, stored_id)
+                    except Exception as e:
+                        print(f"저장된 profile-id로 프로필 조회 실패: {e}")
+                        profile = Profile.from_username(L_content.context, old_username)
+                else:
+                    profile = Profile.from_username(L_content.context, old_username)
+            else:
+                profile = Profile.from_username(L_content.context, old_username)
+
+            # 최종적으로 새 profile 객체에 대해 ini 파일에 profile-id가 저장되어 있지 않으면 저장
+            if latest_stamps_images is not None:
+                if latest_stamps_images.get_profile_id(profile.username) is None:
+                    latest_stamps_images.save_profile_id(profile.username, profile.userid)
+                    print(f"프로필 ID 저장: '{profile.username}' (ID: {profile.userid})")
+       
                 
             image_kwargs = {
                 'profiles': {profile},
@@ -278,7 +351,7 @@ def crawl_and_download(
                     download_posts(L, current_username, term, search_type, target, include_images, include_videos, include_reels, progress_queue, stop_event)
                 else:
                     try:
-                        user_download_with_profiles(L, term, target, include_images, include_reels, progress_queue, stop_event, allow_duplicate, base_download_path)
+                        user_download_with_profiles(L, term, target, include_images, include_reels, progress_queue, stop_event, allow_duplicate, base_download_path, search_type)
                     except Exception as e:
                         print(e)
                 if stop_event.is_set():
