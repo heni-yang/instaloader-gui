@@ -298,7 +298,7 @@ def crawl_and_download(
                     has_images = False
                     if os.path.isdir(classify_dir):
                         for fname in os.listdir(classify_dir):
-                            if fname.lower().endswith(('.jpg', '.jpeg', '.png')):
+                            if fname.lower().endswith(('.jpg', '.jpeg', '.png', '.webp')):
                                 has_images = True
                                 break
 
