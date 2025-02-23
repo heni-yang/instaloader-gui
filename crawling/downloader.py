@@ -129,9 +129,6 @@ def user_download_with_profiles(L, search_user, target, include_images, include_
                     return False
 
             L_content = L
-            content_folder = os.path.join(base_path, "unclassified", "ID", search_user, "Image")
-            L_content.dirname_pattern = content_folder
-            os.makedirs(content_folder, exist_ok=True)
 
             if allow_duplicate:
                 latest_stamps_images = None
@@ -211,6 +208,10 @@ def user_download_with_profiles(L, search_user, target, include_images, include_
             else:
                 profile = Profile.from_username(L_content.context, old_username)
 
+            content_folder = os.path.join(base_path, "unclassified", "ID", search_user, "Image")
+            L_content.dirname_pattern = content_folder
+            os.makedirs(content_folder, exist_ok=True)            
+            
             # 최종적으로 새 profile 객체에 대해 ini 파일에 profile-id가 저장되어 있지 않으면 저장
             if latest_stamps_images is not None:
                 if latest_stamps_images.get_profile_id(profile.username) is None:
