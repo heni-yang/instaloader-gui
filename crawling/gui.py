@@ -167,9 +167,6 @@ def main_gui():
             if not username or not password:
                 append_status("오류: 아이디와 비밀번호를 입력하세요.")
                 return
-            os.makedirs(download_path, exist_ok=True)
-            os.makedirs(os.path.join(download_path, 'hashtag'), exist_ok=True)
-            os.makedirs(os.path.join(download_path, 'ID'), exist_ok=True)
             accounts_listbox.insert(tk.END, username)
             loaded_accounts.append({
                 'INSTAGRAM_USERNAME': username,
