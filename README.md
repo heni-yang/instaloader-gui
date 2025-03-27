@@ -52,9 +52,10 @@ bash
     ├── classifier.py               # YOLO 기반 분류 모듈 (GUI 호출용)
     ├── downloader.py               # Instaloader 기반 인스타그램 크롤링 및 다운로드
     ├── gui.py                      # Tkinter 기반 GUI 인터페이스
-    └── main.py                     # 프로그램의 진입점 (GUI 실행)
-│
-└── classify_yolo.py                # 독립 실행형 YOLO 이미지 분류 스크립트
+    ├── main.py                     # 프로그램의 진입점 (GUI 실행)
+    └── classification/                       # 
+            │
+            └── classify_yolo.py                # 독립 실행형 YOLO 이미지 분류 스크립트
 주요 모듈 설명
 config.py
 기본 설정 딕셔너리와 JSON 파일(config.json)을 사용하여 계정, 검색어, 분류 옵션 등의 설정을 관리합니다.
