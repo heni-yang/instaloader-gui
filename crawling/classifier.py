@@ -4,7 +4,7 @@ import subprocess
 from crawling.utils import logging
 
 # 분류 스크립트 파일명 (classification 폴더 내)
-CLASSIFY_SCRIPT_NAME = 'yolo_test9_latest.py'
+CLASSIFY_SCRIPT_NAME = 'classify_yolo.py'
 CLASSIFY_SCRIPT_REL_PATH = os.path.join('classification', CLASSIFY_SCRIPT_NAME)
 
 def run_classification_process(python_executable, classifier_script, target_image_dir, stop_event, append_status, search_type, search_term, download_path):
