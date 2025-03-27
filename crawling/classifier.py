@@ -3,17 +3,19 @@ import os
 import subprocess
 from crawling.utils import logging
 
-# 분류 스크립트 파일명 (classification 폴더 내)
+# 분류 스크립트 파일명 및 모듈 이름
 CLASSIFY_SCRIPT_NAME = 'classify_yolo.py'
 CLASSIFY_SCRIPT_REL_PATH = os.path.join('classification', CLASSIFY_SCRIPT_NAME)
+# -m 옵션으로 실행할 때 사용할 모듈 이름 (파일 경로와 상응함)
+CLASSIFY_MODULE_NAME = "crawling.classification." + os.path.splitext(CLASSIFY_SCRIPT_NAME)[0]
 
-def run_classification_process(python_executable, classifier_script, target_image_dir, stop_event, append_status, search_type, search_term, download_path):
+def run_classification_process(python_executable, classifier_module, target_image_dir, stop_event, append_status, search_type, search_term, download_path):
     """
     분류 프로세스를 서브프로세스로 실행합니다.
     
     매개변수:
         python_executable (str): Python 실행 파일 경로.
-        classifier_script (str): 분류 스크립트 경로.
+        classifier_module (str): 분류 스크립트 모듈 이름.
         target_image_dir (str): 분류할 이미지 디렉토리.
         stop_event: 중지 이벤트.
         append_status: 상태 메시지 기록 함수.
@@ -25,9 +27,11 @@ def run_classification_process(python_executable, classifier_script, target_imag
         int 또는 None: 프로세스 종료 코드, 오류 발생 시 None.
     """
     try:
+        # -m 옵션을 사용하여 모듈 형태로 실행
         cmd = [
             python_executable,
-            classifier_script,
+            "-m",
+            classifier_module,
             target_image_dir,
             search_type,
             search_term,
@@ -35,7 +39,8 @@ def run_classification_process(python_executable, classifier_script, target_imag
         ]
         
         append_status(f"분류 프로세스 시작: {' '.join(cmd)}")
-        process = subprocess.Popen(cmd, text=True, encoding='utf-8', shell=False)
+        project_root = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
+        process = subprocess.Popen(cmd, cwd=project_root, text=True, encoding='utf-8', shell=False)
         stdout, stderr = process.communicate()
         
         if stop_event.is_set():
@@ -95,7 +100,8 @@ def classify_images(root, append_status, download_directory_var, search_term, us
     
     overall_success = True
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    classifier_script = os.path.join(script_dir, 'classification', CLASSIFY_SCRIPT_NAME)
+    # 파일 존재 여부는 기존 방식대로 검사 (모듈 실행과는 별개)
+    classifier_script_file = os.path.join(script_dir, 'classification', CLASSIFY_SCRIPT_NAME)
     
     if os.name == 'nt':
         python_executable = os.path.join(script_dir, 'classification', 'classify_venv', 'Scripts', 'python.exe')
@@ -105,8 +111,8 @@ def classify_images(root, append_status, download_directory_var, search_term, us
     if not os.path.exists(python_executable):
         append_status(f"오류: 가상환경 Python 실행 파일 없음: {python_executable}")
         return False
-    if not os.path.isfile(classifier_script):
-        append_status(f"오류: 분류 스크립트 없음: {classifier_script}")
+    if not os.path.isfile(classifier_script_file):
+        append_status(f"오류: 분류 스크립트 없음: {classifier_script_file}")
         return False
     
     for target_image_dir in target_dirs:
@@ -118,7 +124,7 @@ def classify_images(root, append_status, download_directory_var, search_term, us
         append_status(f"[{search_type.upper()}] {search_term} 분류 시작: {target_image_dir}")
         result = run_classification_process(
             python_executable,
-            classifier_script,
+            CLASSIFY_MODULE_NAME,
             target_image_dir,
             stop_event,
             append_status,

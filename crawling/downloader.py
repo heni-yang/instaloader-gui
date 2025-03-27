@@ -62,10 +62,21 @@ def instaloader_login(username, password, download_path, include_videos=False, i
 
     return L
 
-def download_posts(L, username, search_term, search_type, target, include_images, include_videos, include_reels, progress_queue, stop_event, resume_from=0):
+def download_posts(
+    L,
+    username,
+    search_term,
+    search_type,
+    target,
+    include_images,
+    include_videos,
+    progress_queue,
+    stop_event,
+    resume_from=0
+):
     """
     해시태그 또는 사용자 ID를 기반으로 인스타그램 게시물을 다운로드합니다.
-    
+
     매개변수:
         L (Instaloader): 로그인된 Instaloader 객체.
         username (str): 사용자 이름.
@@ -74,19 +85,47 @@ def download_posts(L, username, search_term, search_type, target, include_images
         target (int): 다운로드할 게시물 수 (0이면 전체).
         include_images (bool): 이미지 다운로드 여부.
         include_videos (bool): 영상 다운로드 여부.
-        include_reels (bool): 릴스 다운로드 여부.
         progress_queue: 진행 상황 큐.
         stop_event: 중지 이벤트.
         resume_from (int): 재시작 인덱스.
     """
+
+    def my_tag_filter(post):
+        print(f"[DEBUG] shortcode={post.shortcode}, is_video={post.is_video}, typename={post.typename}")
+
+        # sidecar 내부에 동영상이 있는지 직접 확인
+        if post.typename == "GraphSidecar":
+            sidecar_nodes = list(post.get_sidecar_nodes())
+            # 하나라도 동영상이 있으면 True, 아니면 False
+            has_video_in_sidecar = any(node.is_video for node in sidecar_nodes)
+            # ... 이후 include_images, include_videos 여부에 맞춰 처리
+            if include_images and include_videos:
+                return True
+            if include_images and not include_videos:
+                # sidecar 전체가 전부 이미지인지 확인
+                return not has_video_in_sidecar
+            if include_videos and not include_images:
+                return has_video_in_sidecar
+            return False
+
+        # 일반 GraphImage/GraphVideo 처리
+        if include_images and include_videos:
+            return True
+        if include_images and not include_videos:
+            return not post.is_video
+        if include_videos and not include_images:
+            return post.is_video
+        return False
+
     print(f"{search_term} 다운로드 시작 (검색 유형: {search_type})")
     count = 0
     progress_queue.put(("term_start", search_term, username))
+
     try:
         if search_type == 'hashtag':
             hashtag = instaloader.Hashtag.from_name(L.context, search_term)
             total_posts = hashtag.mediacount
-            posts = hashtag.get_all_posts()
+            posts = hashtag.get_posts_resumable()
         else:
             print("지원되지 않는 검색 유형입니다.")
             progress_queue.put(("term_error", search_term, "지원되지 않는 검색 유형", username))
@@ -95,39 +134,52 @@ def download_posts(L, username, search_term, search_type, target, include_images
         if target != 0 and target < total_posts:
             total_posts = target
 
+        # resume_from이 지정된 경우 슬라이싱
         if resume_from > 0 or target != 0:
+            from itertools import islice
             posts = islice(posts, resume_from, None if target == 0 else resume_from + target)
 
-        for post in posts:
-            if stop_event.is_set():
-                print("중지 신호 감지. 다운로드 중지됨.")
-                progress_queue.put(("term_error", search_term, "사용자 중지", username))
-                return
+        if stop_event.is_set():
+            print("중지 신호 감지. 다운로드 중지됨.")
+            progress_queue.put(("term_error", search_term, "사용자 중지", username))
+            return
 
-            target_folder = os.path.join(
-                L.dirname_pattern,
-                'hashtag' if search_type == 'hashtag' else 'ID',
-                search_term,
-                'Reels' if include_reels else 'Image'
-            )
-            create_dir_if_not_exists(target_folder)
-            original_dirname = L.dirname_pattern
-            L.dirname_pattern = target_folder
+        # 실제 다운로드 폴더 설정
+        target_folder = os.path.join(
+            L.dirname_pattern,
+            'hashtag',
+            search_term,
+            'Videos' if include_videos else 'Image'
+        )
+        os.makedirs(target_folder, exist_ok=True)
 
-            try:
-                L.download_post(post, target=search_term)
-            except Exception as e:
-                print(f"게시물 다운로드 오류: {e}")
-                progress_queue.put(("term_error", search_term, f"게시물 다운로드 오류: {e}", username))
-                L.dirname_pattern = original_dirname
-                continue
+        # 기존 dirname_pattern 백업
+        original_dirname = L.dirname_pattern
+        L.dirname_pattern = target_folder
 
+        try:
+            if include_images and include_videos:
+                # post_filter에 my_tag_filter 전달
+                L.download_hashtag(
+                    search_term,
+                    max_count=total_posts,
+                    post_filter=my_tag_filter,
+                    profile_pic=False
+                )
+
+        except Exception as e:
+            print(f"게시물 다운로드 오류: {e}")
+            progress_queue.put(("term_error", search_term, f"게시물 다운로드 오류: {e}", username))
             L.dirname_pattern = original_dirname
-            count += 1
-            progress_queue.put(("term_progress", search_term, count, username))
+
+        # dirname_pattern 복원
+        L.dirname_pattern = original_dirname
+        count += 1
+        progress_queue.put(("term_progress", search_term, count, username))
 
         print(f"{search_term} 다운로드 완료: {count}개 게시물")
         progress_queue.put(("term_complete", search_term, username))
+
     except instaloader.exceptions.LoginRequiredException as e:
         print(f"로그인 필요 오류: {e}")
         progress_queue.put(("term_error", search_term, "로그인 필요", username))
@@ -343,7 +395,7 @@ def crawl_and_download(search_terms, target, accounts, search_type, include_imag
                     append_status(f"{current_username} 계정으로 {term} 다운로드 시작")
                     if search_type == 'hashtag':
                         download_posts(L, current_username, term, search_type, target,
-                                       include_images, include_videos, include_reels, progress_queue, stop_event)
+                                       include_images, include_videos, progress_queue, stop_event)
                     else:
                         user_download_with_profiles(L, term, target, include_images, include_reels,
                                                     progress_queue, stop_event, allow_duplicate, base_download_path, search_type)
@@ -361,9 +413,9 @@ def crawl_and_download(search_terms, target, accounts, search_type, include_imag
                         if stop_event.is_set():
                             append_status("중지: 분류 중지됨.")
                             return
-                    delay = random.uniform(60, 180)
-                    print(f"다음 호출 전 {delay:.2f}초 대기...")
-                    time.sleep(delay)
+                    #delay = random.uniform(60, 180)
+                    #print(f"다음 호출 전 {delay:.2f}초 대기...")
+                    #time.sleep(delay)
                 break
             except Exception as e:
                 print(f"계정 처리 오류: {e}")
