@@ -413,8 +413,8 @@ def main_gui():
         # '인물' 폴더는 해시태그, 사용자 디렉토리 모두 포함하는 상위 폴더로 가정
         hashtag_dir = os.path.join(main_download_dir, '인물')
         user_id_dir = os.path.join(main_download_dir, '인물')        
-        # create_dir_if_not_exists(hashtag_dir)
-        # create_dir_if_not_exists(user_id_dir)
+        create_dir_if_not_exists(hashtag_dir)
+        create_dir_if_not_exists(user_id_dir)
         
         # 해시태그 목록 새로고침 (디렉토리명이 "hashtag_"로 시작하는 경우만 추가)
         hashtag_listbox.delete(0, tk.END)
