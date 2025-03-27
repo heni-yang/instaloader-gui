@@ -288,6 +288,8 @@ def crawl_and_download(search_terms, target, accounts, search_type, include_imag
     """
     print("크롤링 및 다운로드 시작...")
     base_download_path = os.path.join(os.getcwd(), download_path)
+    # 기본 다운로드 경로가 없으면 생성
+    create_dir_if_not_exists(base_download_path)
     for sub in ["unclassified", "Reels", "인물", "비인물"]:
         create_dir_if_not_exists(os.path.join(base_download_path, sub))
     
