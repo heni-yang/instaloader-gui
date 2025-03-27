@@ -326,15 +326,21 @@ def main_gui():
     download_directory_var = tk.StringVar(value=DEFAULT_DOWNLOAD_PATH)
     download_dir_entry = ttk.Entry(download_dir_frame, textvariable=download_directory_var, width=50, font=('Arial', 10))
     download_dir_entry.grid(row=0, column=1, sticky='ew', padx=10, pady=5)
+    
     def open_download_directory():
+        """
+        '폴더 열기' 버튼 클릭 시, 다운로드 경로가 없으면 생성 후 엽니다.
+        """
         d = download_directory_var.get()
-        if os.path.isdir(d):
-            if os.name == 'nt':
-                os.startfile(d)
-            else:
-                subprocess.Popen(["open", d])
+        if not os.path.isdir(d):
+            # 디렉토리가 없으면 생성
+            create_dir_if_not_exists(d)
+            append_status(f"다운로드 경로 생성됨: {d}")
+        if os.name == 'nt':
+            os.startfile(d)
         else:
-            append_status("오류: 다운로드 디렉토리 없음.")
+            subprocess.Popen(["open", d])
+
     def select_download_directory_main():
         d = filedialog.askdirectory(initialdir=DEFAULT_DOWNLOAD_PATH)
         if d:
@@ -345,6 +351,7 @@ def main_gui():
             save_config(config)
             append_status("다운로드 경로 변경됨.")
             print("다운로드 경로 업데이트됨.")
+
     ttk.Button(download_dir_frame, text="경로 선택", command=select_download_directory_main, width=12).grid(row=0, column=2, padx=5, pady=5)
     ttk.Button(download_dir_frame, text="폴더 열기", command=open_download_directory, width=12).grid(row=0, column=3, padx=5, pady=5)
 
@@ -391,18 +398,34 @@ def main_gui():
     user_ids_cached = []
 
     def load_existing_directories():
+        """
+        다운로드 경로에 있는 기존 디렉토리들을 불러옵니다.
+        다운로드 경로가 없으면 생성합니다.
+        
+        - 해시태그 관련 디렉토리는 'hashtag_'로 시작하는 디렉토리들을 찾아,
+          접두어 'hashtag_'를 제거한 나머지 부분을 해시태그 목록에 추가합니다.
+        - 사용자 ID 관련 디렉토리는 'user_'로 시작하는 디렉토리들을 찾아 목록에 추가합니다.
+        """
         main_download_dir = download_directory_var.get()
         if not os.path.isdir(main_download_dir):
-            append_status(f"오류: 다운로드 경로 없음: {main_download_dir}")
+            append_status(f"오류: 다운로드 경로가 존재하지 않습니다: {main_download_dir}")
             return
+        # '인물' 폴더는 해시태그, 사용자 디렉토리 모두 포함하는 상위 폴더로 가정
         hashtag_dir = os.path.join(main_download_dir, '인물')
-        user_id_dir = os.path.join(main_download_dir, '인물')
-        create_dir_if_not_exists(hashtag_dir)
-        create_dir_if_not_exists(user_id_dir)
+        user_id_dir = os.path.join(main_download_dir, '인물')        
+        # create_dir_if_not_exists(hashtag_dir)
+        # create_dir_if_not_exists(user_id_dir)
+        
+        # 해시태그 목록 새로고침 (디렉토리명이 "hashtag_"로 시작하는 경우만 추가)
         hashtag_listbox.delete(0, tk.END)
+        for d in os.listdir(hashtag_dir):
+            full_path = os.path.join(hashtag_dir, d)
+            if os.path.isdir(full_path) and d.startswith("hashtag_"):
+                # "hashtag_" 접두어 제거 후 남은 부분을 목록에 추가
+                hashtag_listbox.insert(tk.END, d[len("hashtag_"):])
+        
+        # 사용자 ID 목록 새로고침
         user_id_listbox.delete(0, tk.END)
-        for tag in [d for d in os.listdir(hashtag_dir) if os.path.isdir(os.path.join(hashtag_dir, d))]:
-            hashtag_listbox.insert(tk.END, tag)
         nonlocal user_ids_cached
         user_ids_cached = []
         for d in os.listdir(user_id_dir):
@@ -417,6 +440,7 @@ def main_gui():
                     append_status(f"경고: {d} 생성/수정일 오류: {e}")
         for uid, _, _ in sorted(user_ids_cached, key=lambda x: x[1], reverse=True):
             user_id_listbox.insert(tk.END, uid)
+
 
     def sort_user_ids_by_creation_desc():
         user_id_listbox.delete(0, tk.END)
@@ -591,10 +615,8 @@ def main_gui():
         allow_duplicate = allow_duplicate_var.get()
         d_path = download_directory_var.get().strip()
         if not os.path.isdir(d_path):
-            # 기본 다운로드 경로가 없으면 생성
             create_dir_if_not_exists(d_path)
-            append_status(f"다운로드경로 생성: {d_path}")
-            return
+            append_status(f"다운로드 경로 생성됨: {d_path}")
         save_config(config)
         append_status("설정 저장됨.")
         q = Queue()
