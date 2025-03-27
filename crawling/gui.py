@@ -402,34 +402,32 @@ def main_gui():
         다운로드 경로에 있는 기존 디렉토리들을 불러옵니다.
         다운로드 경로가 없으면 생성합니다.
         
-        - 해시태그 관련 디렉토리는 'hashtag_'로 시작하는 디렉토리들을 찾아,
+        - 해시태그 관련 디렉토리는 '인물' 폴더 내에서 'hashtag_'로 시작하는 디렉토리를 찾아,
           접두어 'hashtag_'를 제거한 나머지 부분을 해시태그 목록에 추가합니다.
-        - 사용자 ID 관련 디렉토리는 'user_'로 시작하는 디렉토리들을 찾아 목록에 추가합니다.
+        - 사용자 ID 관련 디렉토리는 '인물' 폴더 내에서 'user_'로 시작하는 디렉토리를 찾아 목록에 추가합니다.
         """
         main_download_dir = download_directory_var.get()
         if not os.path.isdir(main_download_dir):
             append_status(f"오류: 다운로드 경로가 존재하지 않습니다: {main_download_dir}")
             return
-        # '인물' 폴더는 해시태그, 사용자 디렉토리 모두 포함하는 상위 폴더로 가정
-        hashtag_dir = os.path.join(main_download_dir, '인물')
-        user_id_dir = os.path.join(main_download_dir, '인물')        
-        create_dir_if_not_exists(hashtag_dir)
-        create_dir_if_not_exists(user_id_dir)
+        # '인물' 폴더는 해시태그와 사용자 디렉토리 모두 포함하는 상위 폴더입니다.
+        people_dir = os.path.join(main_download_dir, '인물')
+        create_dir_if_not_exists(people_dir)
         
-        # 해시태그 목록 새로고침 (디렉토리명이 "hashtag_"로 시작하는 경우만 추가)
+        # 해시태그 목록 새로고침: 'hashtag_'로 시작하는 디렉토리들만 추가
         hashtag_listbox.delete(0, tk.END)
-        for d in os.listdir(hashtag_dir):
-            full_path = os.path.join(hashtag_dir, d)
+        for d in os.listdir(people_dir):
+            full_path = os.path.join(people_dir, d)
             if os.path.isdir(full_path) and d.startswith("hashtag_"):
-                # "hashtag_" 접두어 제거 후 남은 부분을 목록에 추가
+                # 접두어 'hashtag_' 제거 후 남은 부분을 목록에 추가
                 hashtag_listbox.insert(tk.END, d[len("hashtag_"):])
         
-        # 사용자 ID 목록 새로고침
+        # 사용자 ID 목록 새로고침: 'user_'로 시작하는 디렉토리들만 추가
         user_id_listbox.delete(0, tk.END)
         nonlocal user_ids_cached
         user_ids_cached = []
-        for d in os.listdir(user_id_dir):
-            full_path = os.path.join(user_id_dir, d)
+        for d in os.listdir(people_dir):
+            full_path = os.path.join(people_dir, d)
             if os.path.isdir(full_path) and d.startswith("user_"):
                 actual_uid = d[len("user_"):]
                 try:
@@ -440,7 +438,6 @@ def main_gui():
                     append_status(f"경고: {d} 생성/수정일 오류: {e}")
         for uid, _, _ in sorted(user_ids_cached, key=lambda x: x[1], reverse=True):
             user_id_listbox.insert(tk.END, uid)
-
 
     def sort_user_ids_by_creation_desc():
         user_id_listbox.delete(0, tk.END)
