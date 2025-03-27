@@ -7,6 +7,7 @@ from queue import Queue, Empty
 from crawling.config import load_config, save_config
 from crawling.downloader import crawl_and_download
 from crawling.classifier import classify_images
+from crawling.utils import create_dir_if_not_exists
 import subprocess
 import configparser
 from datetime import datetime
@@ -590,7 +591,9 @@ def main_gui():
         allow_duplicate = allow_duplicate_var.get()
         d_path = download_directory_var.get().strip()
         if not os.path.isdir(d_path):
-            append_status(f"오류: 다운로드 경로 없음: {d_path}")
+            # 기본 다운로드 경로가 없으면 생성
+            create_dir_if_not_exists(d_path)
+            append_status(f"다운로드경로 생성: {d_path}")
             return
         save_config(config)
         append_status("설정 저장됨.")
