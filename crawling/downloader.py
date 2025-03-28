@@ -17,20 +17,14 @@ create_dir_if_not_exists(SESSION_DIR)
 STAMPS_FILE_IMAGES = os.path.join(os.path.dirname(os.path.abspath(__file__)), "latest-stamps-images.ini")
 STAMPS_FILE_REELS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "latest-stamps-reels.ini")
 
+# NoOpRateController 정의: sleep()와 query_waittime()에서 아무런 대기 동작을 하지 않음
+class NoOpRateController(instaloader.RateController):
+    def sleep(self, seconds):
+        # 실제 대기 없이 바로 리턴
+        raise NoOpRateController()
+
+
 def instaloader_login(username, password, download_path, include_videos=False, include_reels=False):
-    """
-    Instaloader를 사용해 인스타그램에 로그인합니다.
-    
-    매개변수:
-        username (str): 사용자 이름.
-        password (str): 비밀번호.
-        download_path (str): 다운로드 경로.
-        include_videos (bool): 영상 다운로드 여부.
-        include_reels (bool): 릴스 다운로드 여부.
-        
-    반환:
-        Instaloader 객체 또는 None.
-    """
     L = instaloader.Instaloader(
         download_videos=include_videos or include_reels,
         download_video_thumbnails=False,
@@ -39,7 +33,8 @@ def instaloader_login(username, password, download_path, include_videos=False, i
         save_metadata=False,
         post_metadata_txt_pattern='',
         dirname_pattern=download_path,
-        rate_controller=lambda context: RateController(context)
+        # 기존 RateController 대신 NoOpRateController 사용
+        rate_controller=lambda context: NoOpRateController(context)
     )
     session_file = os.path.join(SESSION_DIR, f"{username}.session")
     try:
@@ -48,16 +43,16 @@ def instaloader_login(username, password, download_path, include_videos=False, i
             print(f"세션 로드 성공: {username}")
         else:
             L.login(username, password)
-            print(f"로그인 성공: {username}")
+            print(f"Instaloader 로그인 성공: {username}")
             L.save_session_to_file(filename=session_file)
     except instaloader.exceptions.BadCredentialsException:
-        print(f"잘못된 아이디/비밀번호: {username}")
+        print(f"잘못된 아이디 또는 비밀번호입니다: {username}")
         return None
     except instaloader.exceptions.TwoFactorAuthRequiredException:
-        print(f"이중 인증 필요: {username}")
+        print(f"이중 인증이 필요합니다: {username}")
         return None
     except Exception as e:
-        print(f"{username} 로그인 오류: {e}")
+        print(f"로그인 중 에러 발생 ({username}): {e}")
         return None
 
     return L
