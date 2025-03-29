@@ -8,6 +8,10 @@ import shutil
 import random
 from datetime import datetime
 from crawling.utils import create_dir_if_not_exists, logging
+from sqlite3 import OperationalError, connect
+from platform import system
+from glob import glob
+from os.path import expanduser
 
 # 세션 파일 저장 디렉토리 설정
 SESSION_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'sessions')
@@ -17,14 +21,21 @@ create_dir_if_not_exists(SESSION_DIR)
 STAMPS_FILE_IMAGES = os.path.join(os.path.dirname(os.path.abspath(__file__)), "latest-stamps-images.ini")
 STAMPS_FILE_REELS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "latest-stamps-reels.ini")
 
-# NoOpRateController 정의: sleep()와 query_waittime()에서 아무런 대기 동작을 하지 않음
-class NoOpRateController(instaloader.RateController):
-    def sleep(self, seconds):
-        # 실제 대기 없이 바로 리턴
-        raise NoOpRateController()
-
-
-def instaloader_login(username, password, download_path, include_videos=False, include_reels=False):
+def instaloader_login(username, password, download_path, include_videos=False, include_reels=False, cookiefile=None):
+    """
+    Instaloader를 사용해 인스타그램에 로그인합니다.
+    
+    매개변수:
+        username (str): 사용자 이름.
+        password (str): 비밀번호.
+        download_path (str): 다운로드 경로.
+        include_videos (bool): 영상 다운로드 여부.
+        include_reels (bool): 릴스 다운로드 여부.
+        cookiefile (str): Firefox의 cookies.sqlite 파일 경로 (선택적).
+        
+    반환:
+        Instaloader 객체 또는 None.
+    """
     L = instaloader.Instaloader(
         download_videos=include_videos or include_reels,
         download_video_thumbnails=False,
@@ -32,30 +43,61 @@ def instaloader_login(username, password, download_path, include_videos=False, i
         download_comments=False,
         save_metadata=False,
         post_metadata_txt_pattern='',
-        dirname_pattern=download_path,
-        # 기존 RateController 대신 NoOpRateController 사용
-        rate_controller=lambda context: NoOpRateController(context)
+        dirname_pattern=download_path
     )
     session_file = os.path.join(SESSION_DIR, f"{username}.session")
+    
     try:
+        # 세션 파일이 존재하면 이를 우선 로드
         if os.path.isfile(session_file):
             L.load_session_from_file(username, filename=session_file)
             print(f"세션 로드 성공: {username}")
+        # 세션 파일이 없고 cookiefile이 제공되면 쿠키를 이용해 로그인 및 세션 저장
+        elif cookiefile:
+            print("Using cookies from {}.".format(cookiefile))
+            conn = connect(f"file:{cookiefile}?immutable=1", uri=True)
+            try:
+                cookie_data = conn.execute(
+                    "SELECT name, value FROM moz_cookies WHERE baseDomain='instagram.com'"
+                )
+            except OperationalError:
+                cookie_data = conn.execute(
+                    "SELECT name, value FROM moz_cookies WHERE host LIKE '%instagram.com'"
+                )
+            L.context._session.cookies.update(cookie_data)
+            logged_in_username = L.test_login()
+            if not logged_in_username:
+                print("Firefox 쿠키를 통해 로그인하지 못했습니다.")
+                return None
+            print("Imported session cookie for {}.".format(logged_in_username))
+            L.context.username = logged_in_username
+            L.save_session_to_file(session_file)
         else:
+            # 세션 파일이 없고 cookiefile도 제공되지 않으면, 사용자명과 비밀번호로 로그인
             L.login(username, password)
-            print(f"Instaloader 로그인 성공: {username}")
+            print(f"로그인 성공: {username}")
             L.save_session_to_file(filename=session_file)
     except instaloader.exceptions.BadCredentialsException:
-        print(f"잘못된 아이디 또는 비밀번호입니다: {username}")
+        print(f"잘못된 아이디/비밀번호: {username}")
         return None
     except instaloader.exceptions.TwoFactorAuthRequiredException:
-        print(f"이중 인증이 필요합니다: {username}")
+        print(f"이중 인증 필요: {username}")
         return None
     except Exception as e:
-        print(f"로그인 중 에러 발생 ({username}): {e}")
+        print(f"{username} 로그인 오류: {e}")
         return None
 
     return L
+
+def get_cookiefile():
+    default_cookiefile = {
+        "Windows": "~/AppData/Roaming/Mozilla/Firefox/Profiles/*/cookies.sqlite",
+        "Darwin": "~/Library/Application Support/Firefox/Profiles/*/cookies.sqlite",
+    }.get(system(), "~/.mozilla/firefox/*/cookies.sqlite")
+    cookiefiles = glob(expanduser(default_cookiefile))
+    if not cookiefiles:
+        raise SystemExit("No Firefox cookies.sqlite file found. Use -c COOKIEFILE.")
+    return cookiefiles[0]
 
 def download_posts(
     L,
@@ -71,39 +113,8 @@ def download_posts(
 ):
     """
     해시태그 또는 사용자 ID를 기반으로 인스타그램 게시물을 다운로드합니다.
-
-    매개변수:
-        L (Instaloader): 로그인된 Instaloader 객체.
-        username (str): 사용자 이름.
-        search_term (str): 검색어.
-        search_type (str): 'hashtag' 또는 'user'.
-        target (int): 다운로드할 게시물 수 (0이면 전체).
-        include_images (bool): 이미지 다운로드 여부.
-        include_videos (bool): 영상 다운로드 여부.
-        progress_queue: 진행 상황 큐.
-        stop_event: 중지 이벤트.
-        resume_from (int): 재시작 인덱스.
     """
-
     def my_tag_filter(post):
-        print(f"[DEBUG] shortcode={post.shortcode}, is_video={post.is_video}, typename={post.typename}")
-
-        # sidecar 내부에 동영상이 있는지 직접 확인
-        if post.typename == "GraphSidecar":
-            sidecar_nodes = list(post.get_sidecar_nodes())
-            # 하나라도 동영상이 있으면 True, 아니면 False
-            has_video_in_sidecar = any(node.is_video for node in sidecar_nodes)
-            # ... 이후 include_images, include_videos 여부에 맞춰 처리
-            if include_images and include_videos:
-                return True
-            if include_images and not include_videos:
-                # sidecar 전체가 전부 이미지인지 확인
-                return not has_video_in_sidecar
-            if include_videos and not include_images:
-                return has_video_in_sidecar
-            return False
-
-        # 일반 GraphImage/GraphVideo 처리
         if include_images and include_videos:
             return True
         if include_images and not include_videos:
@@ -113,14 +124,12 @@ def download_posts(
         return False
 
     print(f"{search_term} 다운로드 시작 (검색 유형: {search_type})")
-    count = 0
     progress_queue.put(("term_start", search_term, username))
 
     try:
         if search_type == 'hashtag':
             hashtag = instaloader.Hashtag.from_name(L.context, search_term)
             total_posts = hashtag.mediacount
-            posts = hashtag.get_posts_resumable()
         else:
             print("지원되지 않는 검색 유형입니다.")
             progress_queue.put(("term_error", search_term, "지원되지 않는 검색 유형", username))
@@ -129,52 +138,55 @@ def download_posts(
         if target != 0 and target < total_posts:
             total_posts = target
 
-        # resume_from이 지정된 경우 슬라이싱
-        if resume_from > 0 or target != 0:
-            from itertools import islice
-            posts = islice(posts, resume_from, None if target == 0 else resume_from + target)
-
         if stop_event.is_set():
             print("중지 신호 감지. 다운로드 중지됨.")
             progress_queue.put(("term_error", search_term, "사용자 중지", username))
             return
 
-        # 실제 다운로드 폴더 설정
-        target_folder = os.path.join(
-            L.dirname_pattern,
-            'hashtag',
-            search_term,
-            'Videos' if include_videos else 'Image'
-        )
-        os.makedirs(target_folder, exist_ok=True)
+        # 다운로드는 기본 디렉토리(unclassified) 내에 hashtag/[해시태그] 폴더에 저장
+        target_folder = os.path.join(L.dirname_pattern, 'hashtag', search_term)
+        create_dir_if_not_exists(target_folder)
 
-        # 기존 dirname_pattern 백업
         original_dirname = L.dirname_pattern
         L.dirname_pattern = target_folder
 
         try:
-            if include_images and include_videos:
-                # post_filter에 my_tag_filter 전달
-                L.download_hashtag(
+            if include_images or include_videos:
+                L.download_hashtag_top_posts(
                     search_term,
                     max_count=total_posts,
                     post_filter=my_tag_filter,
                     profile_pic=False
                 )
-
+                if include_videos:
+                    # 기본 다운로드 경로의 상위 폴더를 기준으로 Reels/hashtag/[해시태그] 경로를 설정
+                    base_path = os.path.dirname(original_dirname)
+                    videos_folder = os.path.join(base_path, 'Reels', 'hashtag', search_term)
+                    create_dir_if_not_exists(videos_folder)
+                    video_files = []
+                    for root, dirs, files in os.walk(target_folder):
+                        for file in files:
+                            if file.lower().endswith(('.mp4', '.mov', '.avi', '.mkv')):
+                                video_files.append(file)
+                                source_path = os.path.join(root, file)
+                                destination_path = os.path.join(videos_folder, file)
+                                try:
+                                    shutil.move(source_path, destination_path)
+                                    print(f"동영상 이동: {file} -> {videos_folder}")
+                                except Exception as e:
+                                    print(f"동영상 이동 오류: {e}")
+                                    progress_queue.put(("term_error", search_term, f"동영상 이동 오류: {e}", username))
+                    if video_files:
+                        progress_queue.put(("term_progress", search_term, "동영상 이동 완료", username))
         except Exception as e:
             print(f"게시물 다운로드 오류: {e}")
             progress_queue.put(("term_error", search_term, f"게시물 다운로드 오류: {e}", username))
             L.dirname_pattern = original_dirname
 
-        # dirname_pattern 복원
         L.dirname_pattern = original_dirname
-        count += 1
-        progress_queue.put(("term_progress", search_term, count, username))
-
-        print(f"{search_term} 다운로드 완료: {count}개 게시물")
+        progress_queue.put(("term_progress", search_term, 1, username))
+        print(f"{search_term} 다운로드 완료")
         progress_queue.put(("term_complete", search_term, username))
-
     except instaloader.exceptions.LoginRequiredException as e:
         print(f"로그인 필요 오류: {e}")
         progress_queue.put(("term_error", search_term, "로그인 필요", username))
@@ -260,7 +272,7 @@ def user_download_with_profiles(L, search_user, target, include_images, include_
             else:
                 profile = Profile.from_username(L_content.context, search_user)
 
-            content_folder = os.path.join(base_path, "unclassified", "ID", profile.username, "Image")
+            content_folder = os.path.join(base_path, "unclassified", "ID", profile.username)
             L_content.dirname_pattern = content_folder
             create_dir_if_not_exists(content_folder)
 
@@ -360,7 +372,8 @@ def crawl_and_download(search_terms, target, accounts, search_type, include_imag
                 account['INSTAGRAM_PASSWORD'],
                 base_download_path + "/unclassified",
                 include_videos,
-                include_reels
+                include_reels,
+                get_cookiefile()
             )
             if loader:
                 loaded_loaders.append({
@@ -390,7 +403,7 @@ def crawl_and_download(search_terms, target, accounts, search_type, include_imag
                     append_status(f"{current_username} 계정으로 {term} 다운로드 시작")
                     if search_type == 'hashtag':
                         download_posts(L, current_username, term, search_type, target,
-                                       include_images, include_videos, progress_queue, stop_event)
+                                       include_images, include_videos, progress_queue, stop_event, base_download_path)
                     else:
                         user_download_with_profiles(L, term, target, include_images, include_reels,
                                                     progress_queue, stop_event, allow_duplicate, base_download_path, search_type)
@@ -401,7 +414,7 @@ def crawl_and_download(search_terms, target, accounts, search_type, include_imag
                     if include_human_classify and not stop_event.is_set():
                         classify_dir = os.path.join(base_download_path, 'unclassified',
                                                     'hashtag' if search_type == 'hashtag' else 'ID',
-                                                    term, 'Image')
+                                                    term)
                         if os.path.isdir(classify_dir) and any(fname.lower().endswith(('.jpg', '.jpeg', '.png', '.webp'))
                                                               for fname in os.listdir(classify_dir)):
                             classify_images(root, append_status, download_directory_var, term, current_username, search_type, stop_event)
@@ -421,7 +434,8 @@ def crawl_and_download(search_terms, target, accounts, search_type, include_imag
                     loader_dict['password'],
                     base_download_path + "/unclassified",
                     include_videos,
-                    include_reels
+                    include_reels,
+                    get_cookiefile()
                 )
                 if new_loader:
                     loaded_loaders[account_index]['loader'] = new_loader
