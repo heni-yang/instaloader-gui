@@ -94,9 +94,9 @@ def classify_images(root, append_status, download_directory_var, search_term, us
             append_status(f"오류: 비인물 디렉토리 없음: {non_person_base}")
     else:
         if search_type == "hashtag":
-            target_dirs.append(os.path.join(download_path, 'unclassified', 'hashtag', search_term, 'Image'))
+            target_dirs.append(os.path.join(download_path, 'unclassified', 'hashtag', search_term))
         else:
-            target_dirs.append(os.path.join(download_path, 'unclassified', 'ID', search_term, 'Image'))
+            target_dirs.append(os.path.join(download_path, 'unclassified', 'ID', search_term))
     
     overall_success = True
     script_dir = os.path.dirname(os.path.abspath(__file__))
