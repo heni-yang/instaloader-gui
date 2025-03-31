@@ -3,20 +3,27 @@ Instagram Crawler & YOLO Image Classifier
 
 프로젝트 구조
 
+<pre>
 프로젝트 루트/
-│
-├── requirements_classify.txt       # 분류(세그멘테이션/포즈) 관련 의존성 목록
-├── requirements_insta.txt          # 인스타그램 크롤링 관련 의존성 목록
-├── run_project.bat                 # (윈도우용) 프로젝트 실행 배치 파일
-│
-└── crawling/                       # 크롤링 및 GUI 관련 소스 코드
-    ├── config.py                   # 설정 파일 로드 및 저장 (JSON 기반)
-    ├── classifier.py               # YOLO 기반 분류 모듈 (GUI 호출용)
-    ├── downloader.py               # Instaloader 기반 인스타그램 크롤링 및 다운로드
-    ├── gui.py                      # Tkinter 기반 GUI 인터페이스
-    ├── main.py                     # 프로그램의 진입점 (GUI 실행)
-    └── classification/            # 독립 실행형 분류 스크립트 관련 소스 코드
-            └── classify_yolo.py    # 독립 실행형 YOLO 이미지 분류 스크립트
+├── requirements_classify.txt         # 분류/업스케일링 의존성
+├── requirements_insta.txt            # 인스타그램 크롤링 의존성
+├── run_project.bat                   # 실행 배치 파일
+├── venv/
+│   ├── classify_venv/                # 분류/업스케일링 전용 venv (torch, gfpgan, realesrgan 등)
+│   └── insta_venv/                   # 인스타그램 크롤링 전용 venv (Instaloader 등)
+├── models/
+│   ├── classification/               # YOLO 등 분류 관련 모델 파일
+│   └── upscaling/                    # GFPGAN, RealESRGAN 등 업스케일링 관련 모델 파일
+└── crawling/
+    ├── config.py                     # 설정 파일 로드/저장
+    ├── downloader.py                 # 인스타그램 크롤링 모듈
+    ├── gui.py                        # Tkinter GUI
+    ├── main.py                       # 진입점 (GUI 실행)
+    ├── classifier.py                 # GUI용 분류 모듈 (외부 스크립트 호출)
+    └── processing/                   # 분류/업스케일링 독립 실행형 스크립트 모음
+         ├── classify_yolo.py         # (예시) YOLO 분류 스크립트
+         └── upscaler.py              # GFPGAN+RealESRGAN 업스케일링 스크립트
+</pre>
 주요 기능
 인스타그램 크롤링 및 다운로드
 
