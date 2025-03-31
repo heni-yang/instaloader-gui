@@ -18,22 +18,17 @@ set "PYTHON_313="
 echo [INFO] "where.exe python" 결과로부터 Python 3.10 / 3.13 경로 검색...
 for /f "usebackq delims=" %%I in (`where.exe python`) do (
     echo   경로 후보: %%~I
-    REM 버전 확인을 위해 "--version" 실행
     for /f "tokens=*" %%V in ('"%%~I" --version 2^>^1') do (
-        REM 예: "Python 3.10.11"
         echo       버전: %%V
         echo %%V | findstr /i "3.10" >nul
         if !errorlevel! == 0 (
-            REM 아직 PYTHON_310이 비어있다면, 이 경로를 할당
             if not defined PYTHON_310 (
                 set "PYTHON_310=%%~I"
                 echo       --> PYTHON_310 = %%~I
             )
         )
-
         echo %%V | findstr /i "3.13" >nul
         if !errorlevel! == 0 (
-            REM 아직 PYTHON_313이 비어있다면, 이 경로를 할당
             if not defined PYTHON_313 (
                 set "PYTHON_313=%%~I"
                 echo       --> PYTHON_313 = %%~I
@@ -54,13 +49,14 @@ if not defined PYTHON_313 (
 REM -----------------------------------------------------------------
 REM (B) insta_venv / classify_venv 생성/설치/실행
 REM -----------------------------------------------------------------
-set INSTA_ENV_PATH=crawling\insta_venv
-set CLASSIFY_ENV_PATH=crawling\classification\classify_venv
+REM 새 구조: venv 디렉토리 아래에 insta_venv와 classify_venv를 둡니다.
+set "INSTA_ENV_PATH=venv\insta_venv"
+set "CLASSIFY_ENV_PATH=venv\classify_venv"
 
 REM requirements (사용자 환경에 맞게 파일명 수정)
-set INSTA_REQ=requirements_insta.txt
-set CLASSIFY_REQ=requirements_classify.txt
-set TORCH_REQ=requirements_torch.txt
+set "INSTA_REQ=requirements_insta.txt"
+set "CLASSIFY_REQ=requirements_classify.txt"
+set "TORCH_REQ=requirements_torch.txt"
 
 echo.
 echo ==============================================================================
@@ -70,7 +66,7 @@ if exist "%INSTA_ENV_PATH%\Scripts\python.exe" (
     echo [INFO] insta_venv 이미 존재합니다.
 ) else (
     if not defined PYTHON_313 (
-        echo [ERROR] Python 3.13 경로를 찾을 수 없어 insta_venv를 생성할 수 없습니다.
+        echo [ERROR] Python 3.13 경로를 찾지 못했습니다. insta_venv를 생성할 수 없습니다.
         echo [INFO] 크롤링 기능을 사용할 수 없습니다. 스크립트를 계속 진행합니다.
     ) else (
         echo [INFO] insta_venv 가상환경이 없습니다. 새로 생성합니다...
@@ -103,7 +99,7 @@ if exist "%CLASSIFY_ENV_PATH%\Scripts\python.exe" (
     echo [INFO] classify_venv 이미 존재합니다.
 ) else (
     if not defined PYTHON_310 (
-        echo [WARN] Python 3.10 경로를 찾을 수 없어 classify_venv를 생성할 수 없습니다.
+        echo [WARN] Python 3.10 경로를 찾지 못했습니다. classify_venv를 생성할 수 없습니다.
         echo [INFO] 분류 기능은 사용할 수 없습니다.
     ) else (
         echo [INFO] classify_venv 가상환경이 없습니다. 새로 생성합니다...
@@ -117,7 +113,6 @@ if exist "%CLASSIFY_ENV_PATH%\Scripts\python.exe" (
             echo [INFO] requirements_classify.txt 설치...
             call "%CLASSIFY_ENV_PATH%\Scripts\activate.bat"
             "%CLASSIFY_ENV_PATH%\Scripts\python.exe" -m pip install --upgrade pip
-            pip install torch==2.0.1+cu118 torchvision==0.15.2+cu118 torchaudio==2.0.2+cu118 --index-url https://download.pytorch.org/whl/cu118
             pip install -r %CLASSIFY_REQ%
             pip install --no-build-isolation -e git+https://github.com/facebookresearch/detectron2.git@c69939aa85460e8135f40bce908a6cddaa73065f#egg=detectron2
             if errorlevel 1 (
