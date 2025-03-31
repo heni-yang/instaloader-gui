@@ -1,3 +1,13 @@
+# crawling/classification/classify_yolo.py
+"""
+독립 실행형 YOLO 이미지 분류 스크립트.
+타겟 디렉토리의 이미지를 YOLO 세그멘테이션 및 포즈 모델로 처리하여
+이미지를 'human', 'body'(얼굴 가림), 'nonhuman' 등으로 분류합니다.
+사용법:
+    테스트 모드 (어노테이션 포함): python classify_yolo.py <target_image_dir>
+    테스트 모드 (원본 복사):       python classify_yolo.py <target_image_dir> --raw
+    생산 모드:                     python classify_yolo.py <target_image_dir> <search_type> <search_term> <download_path>
+"""
 import os
 import sys
 import shutil
@@ -14,15 +24,15 @@ import torch
 from PIL import Image
 from shapely.geometry import Polygon, box as shapely_box
 from ultralytics import YOLO
+from crawling.utils import convert_webp_to_jpg, collect_image_paths, load_images_concurrently, logging
 
-# GPU 메모리 사용 제한
+# CUDA 사용 시 GPU 메모리 사용을 60%로 제한
 if torch.cuda.is_available():
     torch.cuda.set_per_process_memory_fraction(0.6, 0)
 
-##############################################
-# 상수 정의 및 모델 파일 경로 설정
-##############################################
-# 분류 임계값
+# ===================================================
+# 상수 및 모델 파일 경로 설정
+# ===================================================
 PERSON_CONF_THRESHOLD_YOLO = 0.98
 PERSON_SIZE_THRESHOLD = 0.13
 
@@ -34,29 +44,23 @@ BODY_SIZE_THRESHOLD = 0.005
 
 KEYPOINT_CONFIDENCE_THRESHOLD = 0.5
 
-# 배치 처리 및 throughput 관련
 TARGET_THROUGHPUT = 50  # 목표: 50 이미지/초
 MAX_YOLO_BATCH_SIZE = 4
 MIN_YOLO_BATCH_SIZE = 4
 
-# 리인퍼런스 로직 관련
-DIFF_RATIO_THRESHOLD = 1.0  # 크롭 결과와 기존 포즈 결과 비교 기준
-MIN_DIFF_RATIO_IMPROVEMENT = 0.05  # 변화가 이 정도 이상일 때만 반영
+DIFF_RATIO_THRESHOLD = 1.0
+MIN_DIFF_RATIO_IMPROVEMENT = 0.05
 
-# 동적 배치 사이즈 조절을 위한 히스테리시스 파라미터
-BATCH_THROUGHPUT_HISTORY_LEN = 3  # 최근 3회 평균
+BATCH_THROUGHPUT_HISTORY_LEN = 3
 
-# 디버그 옵션 (어노테이션 중간 결과 저장 등)
 DEBUG_ANNOTATION = False
 DEBUG_DIR = "debug_annotations"
 if DEBUG_ANNOTATION:
     os.makedirs(DEBUG_DIR, exist_ok=True)
 
-# 모델 파일 경로
 script_dir = os.path.dirname(os.path.abspath(__file__))
-#YOLO_MODEL_NAME = "best.pt"          # 세그 모델
-YOLO_MODEL_NAME = "yolo11l-seg.pt"          # 세그 모델
-YOLO_POSE_MODEL_NAME = "yolo11x-pose.pt"  # 포즈 모델
+YOLO_MODEL_NAME = "yolo11l-seg.pt"
+YOLO_POSE_MODEL_NAME = "yolo11x-pose.pt"
 WEIGHTS_PATH = os.path.join(script_dir, "yolo_model", YOLO_MODEL_NAME)
 POSE_WEIGHTS = os.path.join(script_dir, "yolo_model", YOLO_POSE_MODEL_NAME)
 
@@ -92,73 +96,19 @@ COCO_CLASSES = {
     78: "hair drier", 79: "toothbrush"
 }
 
-# 얼굴 가릴 수 있는 클래스 및 나머지 클래스
-CLASSIFICATION_FACE_COVERING_CLASSES = list(range(9, 12)) + list(range(14, 55)) + \
-    list(range(59, 66)) + list(range(68, 80)) + [67]
+CLASSIFICATION_FACE_COVERING_CLASSES = list(range(9, 12)) + list(range(14, 55)) + list(range(59, 66)) + list(range(68, 80)) + [67]
 REMAINING_CLASSES = set(range(80)) - ({0} | set(CLASSIFICATION_FACE_COVERING_CLASSES))
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-##############################################
-# 헬퍼 함수: seg_result의 마스크 정보 반환
-##############################################
+# ===================================================
+# 헬퍼 함수: 이미지 전처리, 로딩 등
+# (utils.py에 일부 기능을 위임)
+# ===================================================
 def get_seg_masks(seg_result):
-    if hasattr(seg_result, 'masks') and seg_result.masks is not None and \
-       hasattr(seg_result.masks, 'xy') and seg_result.masks.xy is not None:
+    if hasattr(seg_result, 'masks') and seg_result.masks is not None and hasattr(seg_result.masks, 'xy'):
         return seg_result.masks.xy
     return None
-
-##############################################
-# 이미지 전처리 및 로딩 함수
-##############################################
-def convert_webp_to_jpg(webp_path):
-    try:
-        with Image.open(webp_path) as img:
-            img = img.convert("RGB")
-            jpg_path = os.path.splitext(webp_path)[0] + ".jpg"
-            img.save(jpg_path, "JPEG")
-        os.remove(webp_path)
-        logging.info(f"Converted {webp_path} to {jpg_path}")
-        return jpg_path
-    except Exception as e:
-        logging.error(f"webp -> jpg 변환 실패: {webp_path} - {e}")
-        return None
-
-def collect_image_paths(directory_path, recursive=False):
-    image_paths = []
-    for root, dirs, files in os.walk(directory_path):
-        if not recursive:
-            dirs[:] = []
-        for file in files:
-            ext = os.path.splitext(file)[1].lower()
-            full_path = os.path.join(root, file)
-            if ext == '.webp':
-                converted = convert_webp_to_jpg(full_path)
-                if converted:
-                    image_paths.append(converted)
-            elif ext in ('.jpg', '.jpeg', '.png'):
-                image_paths.append(full_path)
-    return image_paths
-
-def load_image(image_path):
-    try:
-        img = cv2.imread(image_path)
-        if img is None:
-            raise ValueError("이미지 로드 실패")
-        return image_path, img
-    except Exception as e:
-        logging.error(f"이미지 로드 오류: {image_path} - {e}")
-        return image_path, None
-
-def load_images_concurrently(image_paths, max_workers=8):
-    image_cache = {}
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = {executor.submit(load_image, path): path for path in image_paths}
-        for future in as_completed(futures):
-            path, img = future.result()
-            if img is not None:
-                image_cache[path] = img
-    return image_cache
 
 ##############################################
 # 포즈 및 시각화 관련 함수
@@ -386,9 +336,9 @@ def check_face_covering_overlap(seg_result, face_bbox, person_index, full_img_ar
                 return True
     return False
 
-##############################################
+# ===================================================
 # 이미지 분류 및 어노테이션 처리
-##############################################
+# ===================================================
 def classify_single_image(image_path, preloaded_img, seg_result, pose_result,
                           human_dir, body_dir, non_human_dir, pose_model,
                           mode="production", save_annotation=True):
@@ -754,10 +704,8 @@ def process_images(image_paths, seg_model, pose_model, human_dir, body_dir, non_
             logging.error(f"배치 처리 오류: {batch_paths} - {e}")
             i += current_bs
 
-##############################################
-# 메인 함수
-##############################################
 def main():
+    # 메인 함수: 테스트 모드 및 생산 모드 지원 (앞서 제공한 내용 참고)
     if len(sys.argv) in [2, 3]:
         target_dir = sys.argv[1]
         raw_mode = (len(sys.argv) == 3 and sys.argv[2] == "--raw")
@@ -803,9 +751,9 @@ def main():
         )
     else:
         print("Usage:")
-        print("  테스트 모드(어노테이션 포함): python classify_yolo.py <target_image_dir>")
-        print("  테스트 모드(원본만 복사):   python classify_yolo.py <target_image_dir> --raw")
-        print("  생산 모드:               python classify_yolo.py <target_image_dir> <search_type> <search_term> <download_path>")
+        print("  테스트 모드 (어노테이션 포함): python classify_yolo.py <target_image_dir>")
+        print("  테스트 모드 (원본 복사):      python classify_yolo.py <target_image_dir> --raw")
+        print("  생산 모드:                  python classify_yolo.py <target_image_dir> <search_type> <search_term> <download_path>")
         sys.exit(1)
 
 if __name__ == "__main__":
