@@ -20,6 +20,7 @@ Instagram Crawler & YOLO Image Classifier
     ├── gui.py                        # Tkinter GUI
     ├── main.py                       # 진입점 (GUI 실행)
     ├── classifier.py                 # GUI용 분류 모듈 (외부 스크립트 호출)
+    ├── utils.py                      # 공통 유틸리티 (경로 생성, 이미지 로딩/변환 등)
     └── processing/                   # 분류/업스케일링 독립 실행형 스크립트 모음
          ├── classify_yolo.py         # (예시) YOLO 분류 스크립트
          └── upscaler.py              # GFPGAN+RealESRGAN 업스케일링 스크립트
