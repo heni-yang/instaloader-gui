@@ -19,7 +19,7 @@ Instagram Crawler & YOLO Image Classifier
     ├── downloader.py                 # 인스타그램 크롤링 모듈
     ├── gui.py                        # Tkinter GUI
     ├── main.py                       # 진입점 (GUI 실행)
-    ├── post_processing.py           # 분류 및 업스케일링 프로세스 제어 모듈
+    ├── post_processing.py            # 분류 및 업스케일링 프로세스 제어 모듈
     ├── utils.py                      # 공통 유틸리티 (경로 생성, 이미지 로딩/변환 등)
     └── processing/                   # 분류/업스케일링 독립 실행형 스크립트 모음
          ├── classify_yolo.py         # (예시) YOLO 분류 스크립트
