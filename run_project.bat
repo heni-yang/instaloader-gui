@@ -99,7 +99,7 @@ if exist "%CLASSIFY_ENV_PATH%\Scripts\python.exe" (
     echo [INFO] classify_venv 이미 존재합니다.
 ) else (
     if not defined PYTHON_310 (
-        echo [WARN] Python 3.10 경로를 찾지 못했습니다. classify_venv를 생성할 수 없습니다.
+        echo [WARN] Python 3.10 경로를 찾을 수 없어 classify_venv를 생성할 수 없습니다.
         echo [INFO] 분류 기능은 사용할 수 없습니다.
     ) else (
         echo [INFO] classify_venv 가상환경이 없습니다. 새로 생성합니다...
@@ -113,6 +113,7 @@ if exist "%CLASSIFY_ENV_PATH%\Scripts\python.exe" (
             echo [INFO] requirements_classify.txt 설치...
             call "%CLASSIFY_ENV_PATH%\Scripts\activate.bat"
             "%CLASSIFY_ENV_PATH%\Scripts\python.exe" -m pip install --upgrade pip
+            pip install torch==2.0.1+cu118 torchvision==0.15.2+cu118 torchaudio==2.0.2+cu118 --index-url https://download.pytorch.org/whl/cu118
             pip install -r %CLASSIFY_REQ%
             if errorlevel 1 (
                 echo [ERROR] classify_venv requirements 설치 실패.
