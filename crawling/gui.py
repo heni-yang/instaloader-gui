@@ -10,9 +10,8 @@ import subprocess
 
 from crawling.config import load_config, save_config
 from crawling.downloader import crawl_and_download
-from crawling.classifier import classify_images
+from crawling.post_processing import process_images
 from crawling.utils import create_dir_if_not_exists
-from crawling import upscaler  # 새로 만든 업스케일러 모듈 임포트
 
 # 프로젝트 루트 및 기본 다운로드 경로 설정
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
@@ -65,39 +64,10 @@ def main_gui():
     # 설정 로드 및 계정 불러오기
     config = load_config()
     loaded_accounts = config['ACCOUNTS'][:]
-
-    # -- 추가 옵션 프레임 (인물 분류 및 업스케일링 옵션) --
-    # top_frame와 검색 설정 사이에 위치하도록 row 번호를 조정합니다.
-    options_frame = ttk.LabelFrame(root, text="추가 옵션", padding=5)
-    options_frame.grid(row=2, column=0, padx=10, pady=5, sticky='ew')
-
-    # 인물 분류 체크박스 (이미 존재하는 경우)
-    human_classify_var = tk.BooleanVar(value=False)
-    human_classify_checkbox = ttk.Checkbutton(options_frame, text="인물 분류", variable=human_classify_var)
-    human_classify_checkbox.grid(row=0, column=0, sticky='w', padx=5, pady=2)
-
-    # 업스케일링 체크박스 (인물 분류 선택시에만 활성화)
-    upscale_var = tk.BooleanVar(value=False)
-    upscale_checkbox = ttk.Checkbutton(options_frame, text="업스케일링", variable=upscale_var, state='disabled')
-    upscale_checkbox.grid(row=0, column=1, sticky='w', padx=5, pady=2)
-
-    # 인물 분류 체크박스 상태 변경 시 업스케일링 체크박스 활성화/비활성화 처리
-    def on_human_classify_change(*args):
-        if human_classify_var.get():
-            upscale_checkbox.config(state='normal')
-        else:
-            upscale_checkbox.config(state='disabled')
-            upscale_var.set(False)
-    human_classify_var.trace("w", on_human_classify_change)
-
-    # "이미지 업스케일링" 버튼 (옵션 프레임 아래에 추가)
-    upscale_button = ttk.Button(options_frame, text="이미지 업스케일링", command=lambda: threading.Thread(target=on_upscale_button_click, daemon=True).start())
-    upscale_button.grid(row=1, column=0, columnspan=2, padx=5, pady=5, sticky='ew')
-
+    loaded_searchtype = config['LAST_SEARCH_TYPE'][:]
     # 상태 메시지 출력 영역
     status_frame = ttk.LabelFrame(root, text="상태", padding=3)
-    # status_frame의 위치는 아래쪽에 고정 (예: row=8)
-    status_frame.grid(row=8, column=0, padx=10, pady=5, sticky='nsew')
+    status_frame.grid(row=7, column=0, padx=10, pady=5, sticky='nsew')
     status_frame.columnconfigure(0, weight=1)
     status_frame.rowconfigure(0, weight=1)
     status_text = tk.Text(status_frame, height=10, font=('Arial', 10), state='disabled')
@@ -181,16 +151,16 @@ def main_gui():
         new_password_entry = ttk.Entry(add_window, show="*", width=40, font=('Arial', 10))
         new_password_entry.grid(row=3, column=1, pady=(5,10), padx=10)
         ttk.Label(add_window, text="다운로드 경로:").grid(row=4, column=0, sticky='w', pady=(5,2), padx=10)
-        download_dir_frame_add = ttk.Frame(add_window)
-        download_dir_frame_add.grid(row=4, column=1, pady=(5,10), padx=10, sticky='ew')
+        download_dir_frame = ttk.Frame(add_window)
+        download_dir_frame.grid(row=4, column=1, pady=(5,10), padx=10, sticky='ew')
         download_directory_var_add = tk.StringVar(value=DEFAULT_DOWNLOAD_PATH)
-        download_dir_entry = ttk.Entry(download_dir_frame_add, textvariable=download_directory_var_add, width=30, font=('Arial', 10))
+        download_dir_entry = ttk.Entry(download_dir_frame, textvariable=download_directory_var_add, width=30, font=('Arial', 10))
         download_dir_entry.pack(side='left', padx=(0,5), fill='x', expand=True)
         def select_download_directory_add():
             directory = filedialog.askdirectory(initialdir=DEFAULT_DOWNLOAD_PATH)
             if directory:
                 download_directory_var_add.set(directory)
-        ttk.Button(download_dir_frame_add, text="경로 선택", command=select_download_directory_add, width=10).pack(side='left')
+        ttk.Button(download_dir_frame, text="경로 선택", command=select_download_directory_add, width=10).pack(side='left')
         def save_new_account():
             username = new_username_entry.get().strip()
             password = new_password_entry.get().strip()
@@ -266,39 +236,82 @@ def main_gui():
     search_type_frame.columnconfigure(1, weight=1)
 
     search_type_var = tk.StringVar(value="hashtag")
+    # 해시태그 검색 영역 (수정된 부분)
     hashtag_frame = ttk.Frame(search_type_frame)
     hashtag_frame.grid(row=0, column=0, padx=5, pady=5, sticky='nsew')
     hashtag_frame.columnconfigure(0, weight=1)
-    ttk.Radiobutton(hashtag_frame, text="해시태그 검색", variable=search_type_var, value="hashtag").grid(row=0, column=0, sticky='w')
-    hashtag_check_frame = ttk.Frame(hashtag_frame)
-    hashtag_check_frame.grid(row=1, column=0, sticky='w', pady=2)
-    include_images_var_hashtag = tk.BooleanVar(value=True)
+    hashtag_frame.columnconfigure(1, weight=1)
+    ttk.Radiobutton(hashtag_frame, text="해시태그 검색", variable=search_type_var, value="hashtag")\
+        .grid(row=0, column=0, columnspan=2, sticky='w')
+
+    # BooleanVar 변수 생성
+    include_images_var_hashtag = tk.BooleanVar(value=True)    
     include_videos_var_hashtag = tk.BooleanVar(value=False)
     include_human_classify_var_hashtag = tk.BooleanVar(value=False)
-    include_images_check_hashtag = ttk.Checkbutton(hashtag_check_frame, text="이미지", variable=include_images_var_hashtag)
-    include_images_check_hashtag.pack(side='left', padx=(0,5))
-    include_videos_check_hashtag = ttk.Checkbutton(hashtag_check_frame, text="영상", variable=include_videos_var_hashtag)
-    include_videos_check_hashtag.pack(side='left')
-    include_human_classify_check_hashtag = ttk.Checkbutton(hashtag_frame, text="인물 분류", variable=include_human_classify_var_hashtag)
-    include_human_classify_check_hashtag.grid(row=2, column=0, sticky='w', padx=20)
-    include_human_classify_check_hashtag.configure(state='disabled')
+    upscale_var_hashtag = tk.BooleanVar(value=False)
 
+    # 1행: 이미지, 영상 체크박스
+    include_images_check_hashtag = ttk.Checkbutton(hashtag_frame, text="이미지", variable=include_images_var_hashtag)
+    include_images_check_hashtag.grid(row=1, column=0, sticky='w', padx=5, pady=2)
+    include_videos_check_hashtag = ttk.Checkbutton(hashtag_frame, text="영상", variable=include_videos_var_hashtag)
+    include_videos_check_hashtag.grid(row=1, column=1, sticky='w', padx=5, pady=2)
+
+    # 2행: 인물 분류, 업스케일링 체크박스
+    include_human_classify_check_hashtag = ttk.Checkbutton(hashtag_frame, text="인물 분류", variable=include_human_classify_var_hashtag)
+    include_human_classify_check_hashtag.grid(row=2, column=0, sticky='w', padx=5, pady=2)
+    upscale_checkbox_hashtag = ttk.Checkbutton(hashtag_frame, text="업스케일링", variable=upscale_var_hashtag)
+    upscale_checkbox_hashtag.grid(row=2, column=1, sticky='w', padx=5, pady=2)
+    # 초기에는 인물 분류가 선택되지 않았으므로 업스케일링 체크박스 비활성화
+    upscale_checkbox_hashtag.configure(state='disabled')
+
+    # 인물 분류 체크박스 값에 따라 업스케일링 체크박스 활성/비활성 제어
+    def toggle_upscale_hashtag(*args):
+        if include_human_classify_var_hashtag.get():
+            upscale_checkbox_hashtag.configure(state='normal')
+        else:
+            upscale_var_hashtag.set(False)
+            upscale_checkbox_hashtag.configure(state='disabled')
+    include_human_classify_var_hashtag.trace_add('write', toggle_upscale_hashtag)
+
+
+    # 사용자 ID 검색 영역 (수정된 부분)
     user_id_frame = ttk.Frame(search_type_frame)
     user_id_frame.grid(row=0, column=1, padx=5, pady=5, sticky='nsew')
     user_id_frame.columnconfigure(0, weight=1)
-    ttk.Radiobutton(user_id_frame, text="사용자 ID 검색", variable=search_type_var, value="user").grid(row=0, column=0, sticky='w')
-    user_id_check_frame = ttk.Frame(user_id_frame)
-    user_id_check_frame.grid(row=1, column=0, sticky='w', pady=2)
+    user_id_frame.columnconfigure(1, weight=1)
+    ttk.Radiobutton(user_id_frame, text="사용자 ID 검색", variable=search_type_var, value="user")\
+        .grid(row=0, column=0, columnspan=2, sticky='w')
+
+    # BooleanVar 변수 생성
     include_images_var_user = tk.BooleanVar(value=True)
     include_reels_var_user = tk.BooleanVar(value=False)
     include_human_classify_var_user = tk.BooleanVar(value=False)
-    include_images_check_user = ttk.Checkbutton(user_id_check_frame, text="이미지", variable=include_images_var_user)
-    include_images_check_user.pack(side='left', padx=(0,5))
-    include_reels_check_user = ttk.Checkbutton(user_id_check_frame, text="릴스", variable=include_reels_var_user)
-    include_reels_check_user.pack(side='left')
+    upscale_var_user = tk.BooleanVar(value=False)
+
+    # 1행: 이미지, 릴스 체크박스
+    include_images_check_user = ttk.Checkbutton(user_id_frame, text="이미지", variable=include_images_var_user)
+    include_images_check_user.grid(row=1, column=0, sticky='w', padx=5, pady=2)
+    include_reels_check_user = ttk.Checkbutton(user_id_frame, text="릴스", variable=include_reels_var_user)
+    include_reels_check_user.grid(row=1, column=1, sticky='w', padx=5, pady=2)
+
+    # 2행: 인물 분류, 업스케일링 체크박스
     include_human_classify_check_user = ttk.Checkbutton(user_id_frame, text="인물 분류", variable=include_human_classify_var_user)
-    include_human_classify_check_user.grid(row=2, column=0, sticky='w', padx=20)
-    include_human_classify_check_user.configure(state='disabled')
+    include_human_classify_check_user.grid(row=2, column=0, sticky='w', padx=5, pady=2)
+    upscale_checkbox_user = ttk.Checkbutton(user_id_frame, text="업스케일링", variable=upscale_var_user)
+    upscale_checkbox_user.grid(row=2, column=1, sticky='w', padx=5, pady=2)
+    upscale_checkbox_user.configure(state='disabled')
+    include_images_var_user.trace_add('write',
+        lambda *args: toggle_human_classify(user_id_frame, include_images_var_user, include_human_classify_var_user)
+)
+    # 인물 분류 체크박스 값에 따라 업스케일링 체크박스 활성/비활성 제어
+    def toggle_upscale_user(*args):
+        if include_human_classify_var_user.get():
+            upscale_checkbox_user.configure(state='normal')
+        else:
+            upscale_var_user.set(False)
+            upscale_checkbox_user.configure(state='disabled')
+    include_human_classify_var_user.trace_add('write', toggle_upscale_user)
+
 
     allow_duplicate_var = tk.BooleanVar(value=False)
     ttk.Checkbutton(search_type_frame, text="중복 다운로드 허용", variable=allow_duplicate_var).grid(row=3, column=0, columnspan=2, sticky='w', padx=5, pady=5)
@@ -315,7 +328,10 @@ def main_gui():
                 include_human_classify_check_hashtag.configure(state='disabled')
             else:
                 include_human_classify_check_user.configure(state='disabled')
-
+                
+    include_images_var_hashtag.trace_add('write',
+        lambda *args: toggle_human_classify(hashtag_frame, include_images_var_hashtag, include_human_classify_var_hashtag)
+)                              
     def on_search_type_change(*args):
         stype = search_type_var.get()
         if stype == "hashtag":
@@ -337,7 +353,7 @@ def main_gui():
     search_type_var.trace_add('write', on_search_type_change)
 
     search_frame = ttk.LabelFrame(root, text="검색 설정", padding=5)
-    search_frame.grid(row=3, column=0, padx=10, pady=5, sticky='ew')
+    search_frame.grid(row=2, column=0, padx=10, pady=5, sticky='ew')
     search_frame.columnconfigure(1, weight=1)
     ttk.Label(search_frame, text="검색할 해시태그 / 사용자 ID (여러 개는 개행 또는 쉼표로 구분):", wraplength=300).grid(row=0, column=0, sticky='ne', pady=2, padx=10)
     word_text = scrolledtext.ScrolledText(search_frame, width=50, height=5, font=('Arial', 10))
@@ -348,7 +364,7 @@ def main_gui():
     post_count_entry.insert(0, "0")
 
     download_dir_frame = ttk.LabelFrame(root, text="전체 다운로드 경로 설정", padding=5)
-    download_dir_frame.grid(row=4, column=0, padx=10, pady=5, sticky='ew')
+    download_dir_frame.grid(row=3, column=0, padx=10, pady=5, sticky='ew')
     download_dir_frame.columnconfigure(1, weight=1)
     ttk.Label(download_dir_frame, text="기본 저장 경로:").grid(row=0, column=0, sticky='w', padx=10, pady=5)
     download_directory_var = tk.StringVar(value=DEFAULT_DOWNLOAD_PATH)
@@ -361,6 +377,7 @@ def main_gui():
         """
         d = download_directory_var.get()
         if not os.path.isdir(d):
+            # 디렉토리가 없으면 생성
             create_dir_if_not_exists(d)
             append_status(f"다운로드 경로 생성됨: {d}")
         if os.name == 'nt':
@@ -383,7 +400,7 @@ def main_gui():
     ttk.Button(download_dir_frame, text="폴더 열기", command=open_download_directory, width=12).grid(row=0, column=3, padx=5, pady=5)
 
     existing_dirs_frame = ttk.LabelFrame(root, text="기존 다운로드 디렉토리", padding=5)
-    existing_dirs_frame.grid(row=5, column=0, padx=10, pady=10, sticky='nsew')
+    existing_dirs_frame.grid(row=4, column=0, padx=10, pady=10, sticky='nsew')
     for i in range(3):
         existing_dirs_frame.columnconfigure(i, weight=1)
     existing_dirs_frame.rowconfigure(0, weight=1)
@@ -437,15 +454,19 @@ def main_gui():
         if not os.path.isdir(main_download_dir):
             append_status(f"오류: 다운로드 경로가 존재하지 않습니다: {main_download_dir}")
             return
+        # '인물' 폴더는 해시태그와 사용자 디렉토리 모두 포함하는 상위 폴더입니다.
         people_dir = os.path.join(main_download_dir, '인물')
         create_dir_if_not_exists(people_dir)
         
+        # 해시태그 목록 새로고침: 'hashtag_'로 시작하는 디렉토리들만 추가
         hashtag_listbox.delete(0, tk.END)
         for d in os.listdir(people_dir):
             full_path = os.path.join(people_dir, d)
             if os.path.isdir(full_path) and d.startswith("hashtag_"):
+                # 접두어 'hashtag_' 제거 후 남은 부분을 목록에 추가
                 hashtag_listbox.insert(tk.END, d[len("hashtag_"):])
         
+        # 사용자 ID 목록 새로고침: 'user_'로 시작하는 디렉토리들만 추가
         user_id_listbox.delete(0, tk.END)
         nonlocal user_ids_cached
         user_ids_cached = []
@@ -584,9 +605,10 @@ def main_gui():
                 if stop_evt.is_set():
                     append_status("중지: 재분류 중지됨.")
                     return
-                success = classify_images(
+                success = process_images(
                     root, append_status, download_directory_var,
                     term, "", config['LAST_SEARCH_TYPE'], stop_evt,
+                    upscale=False,
                     classified=True
                 )
                 root.after(0, lambda p=(i/total)*100: progress_var.set(p))
@@ -600,50 +622,6 @@ def main_gui():
         threading.Thread(target=worker, daemon=True).start()
 
     ttk.Button(existing_dirs_frame, text="분류된 이미지 재분류", command=lambda: reclassify_classified_images(global_stop_event), width=20).grid(row=3, column=2, padx=5, pady=2, sticky='ew')
-
-    # ---- 업스케일링 기능 구현 ----
-    def on_upscale_button_click():
-        download_path = download_directory_var.get().strip()
-        classified_dir = os.path.join(download_path, "인물")
-        upscale_output_dir = os.path.join(download_path, "인물_upscaled")
-        append_status("업스케일링 시작...")
-        if not os.path.isdir(classified_dir):
-            append_status(f"오류: 분류된 이미지 디렉토리 없음: {classified_dir}")
-            return
-        os.makedirs(upscale_output_dir, exist_ok=True)
-        # 분류 전용 venv의 python 실행 파일 (새 구조: venv/classify_venv)
-        classification_python = os.path.join(PROJECT_ROOT, 'venv', 'classify_venv', 'Scripts', 'python.exe') if os.name == 'nt' else os.path.join(PROJECT_ROOT, 'venv', 'classify_venv', 'bin', 'python')
-        # processing/upscaler.py 경로 (프로젝트 루트 기준)
-        upscaler_script = os.path.join(PROJECT_ROOT, 'crawling', 'processing', 'upscaler.py')
-        supported_ext = ('.jpg', '.jpeg', '.png')
-        for filename in os.listdir(classified_dir):
-            if filename.lower().endswith(supported_ext):
-                in_file = os.path.join(classified_dir, filename)
-                out_file = os.path.join(upscale_output_dir, filename)
-                cmd = [classification_python, upscaler_script, in_file, out_file]
-                try:
-                    result = subprocess.run(cmd, capture_output=True, text=True)
-                    if result.returncode == 0:
-                        append_status(f"업스케일 완료: {filename}")
-                    else:
-                        append_status(f"업스케일 오류 ({filename}): {result.stderr}")
-                except Exception as e:
-                    append_status(f"업스케일링 실행 중 예외 ({filename}): {e}")
-        append_status("모든 이미지 업스케일 완료!")
-
-    # 만약 전체 워크플로우를 다운로드 → 인물분류 → 업스케일링 순으로 진행하려면,
-    # 분류 작업 후에 upscale_var 체크 여부를 확인하고, True일 경우 on_upscale_button_click()을 호출합니다.
-    def start_process():
-        # 다운로드 및 분류 실행 (이미 구현되어 있음)
-        classify_success = classify_images(
-            root, append_status, download_directory_var,
-            word_text.get("1.0", tk.END).strip(), "", search_type_var.get(), global_stop_event,
-            classified=False
-        )
-        if upscale_var.get() and classify_success:
-            on_upscale_button_click()
-
-    ttk.Button(root, text="크롤링 시작", command=lambda: threading.Thread(target=start_crawling, daemon=True).start(), width=15).grid(row=7, column=0, padx=5, pady=2, sticky='ew')
 
     def start_crawling():
         append_status("크롤링 시작됨...")
@@ -676,6 +654,10 @@ def main_gui():
             include_human_classify_var_hashtag.get() if config['LAST_SEARCH_TYPE'] == "hashtag"
             else include_human_classify_var_user.get() if config['LAST_SEARCH_TYPE'] == "user" else False
         )
+        config['INCLUDE_UPSCALE'] = (
+            upscale_var_hashtag.get() if config['LAST_SEARCH_TYPE'] == "hashtag"
+            else upscale_var_user.get() if config['LAST_SEARCH_TYPE'] == "user" else False
+        )
         allow_duplicate = allow_duplicate_var.get()
         d_path = download_directory_var.get().strip()
         if not os.path.isdir(d_path):
@@ -696,6 +678,7 @@ def main_gui():
                 config['INCLUDE_VIDEOS'],
                 config['INCLUDE_REELS'],
                 config['INCLUDE_HUMAN_CLASSIFY'],
+                config['INCLUDE_UPSCALE'],
                 q,
                 on_complete,
                 global_stop_event,
@@ -714,12 +697,12 @@ def main_gui():
         append_status("크롤링 및 분류 중지 요청됨.")
 
     button_frame = ttk.Frame(root)
-    button_frame.grid(row=9, column=0, pady=5, padx=10, sticky='ew')
+    button_frame.grid(row=8, column=0, pady=5, padx=10, sticky='ew')
     for i in range(3):
         button_frame.columnconfigure(i, weight=1)
     ttk.Button(button_frame, text="크롤링 시작", command=start_crawling, width=15).grid(row=0, column=0, padx=5, pady=2, sticky='ew')
     ttk.Button(button_frame, text="중지", command=stop_crawling, width=15).grid(row=0, column=1, padx=5, pady=2, sticky='ew')
-    ttk.Button(existing_dirs_frame, text="선택된 이미지 분류", command=lambda: classify_images(global_stop_event), width=20).grid(row=2, column=2, padx=5, pady=2, sticky='ew')
+    ttk.Button(existing_dirs_frame, text="선택된 이미지 분류", command=lambda: process_images(global_stop_event), width=20).grid(row=2, column=2, padx=5, pady=2, sticky='ew')
 
     def on_complete(message):
         append_status(f"완료: {message}")
@@ -740,13 +723,15 @@ def main_gui():
     if config['SEARCH_TERMS']:
         word_text.insert(tk.END, "\n".join(config['SEARCH_TERMS']))
         append_status("저장된 검색어 자동 입력됨.")
-
+    
     def initial_toggle():
-        toggle_human_classify(hashtag_frame, include_images_var_hashtag, include_human_classify_var_hashtag)
-        toggle_human_classify(user_id_frame, include_images_var_user, include_human_classify_var_user)
+        if loaded_searchtype == 'hashtag':
+            toggle_human_classify(hashtag_frame, include_images_var_hashtag, include_human_classify_var_hashtag)
+        else:
+            toggle_human_classify(user_id_frame, include_images_var_user, include_human_classify_var_user)
     initial_toggle()
     
-    root.rowconfigure(8, weight=1)
+    root.rowconfigure(7, weight=1)
     root.columnconfigure(0, weight=1)
     load_existing_directories()
     root.mainloop()
