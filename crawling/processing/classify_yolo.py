@@ -1,4 +1,4 @@
-# crawling/classification/classify_yolo.py
+# crawling/processing/classify_yolo.py
 """
 독립 실행형 YOLO 이미지 분류 스크립트.
 타겟 디렉토리의 이미지를 YOLO 세그멘테이션 및 포즈 모델로 처리하여
@@ -59,10 +59,11 @@ if DEBUG_ANNOTATION:
     os.makedirs(DEBUG_DIR, exist_ok=True)
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.abspath(os.path.join(script_dir, "..", ".."))
 YOLO_MODEL_NAME = "yolo11l-seg.pt"
 YOLO_POSE_MODEL_NAME = "yolo11x-pose.pt"
-WEIGHTS_PATH = os.path.join(script_dir, "yolo_model", YOLO_MODEL_NAME)
-POSE_WEIGHTS = os.path.join(script_dir, "yolo_model", YOLO_POSE_MODEL_NAME)
+WEIGHTS_PATH = os.path.join(project_root, "models", "classification", YOLO_MODEL_NAME)
+POSE_WEIGHTS = os.path.join(project_root, "models", "classification", YOLO_POSE_MODEL_NAME)
 
 # COCO 기준 키포인트 인덱스
 HUMAN_KEYPOINTS = {'nose': 0, 'left_eye': 1, 'right_eye': 2, 'left_ear': 3, 'right_ear': 4}
@@ -667,6 +668,7 @@ def process_batch(batch_paths, image_cache, seg_model, pose_model):
 def process_images(image_paths, seg_model, pose_model, human_dir, body_dir, non_human_dir,
                    mode="production", save_annotation=True):
     logging.info("이미지 로딩 시작...")
+    print(torch.cuda.is_available())
     image_cache = load_images_concurrently(image_paths, max_workers=8)
     logging.info(f"{len(image_cache)}개의 이미지 메모리 로드 완료.")
     current_bs = (MIN_YOLO_BATCH_SIZE + MAX_YOLO_BATCH_SIZE) // 2
