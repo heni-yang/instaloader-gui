@@ -62,29 +62,6 @@
     └── processing/                   # 분류/업스케일링 독립 실행형 스크립트 모음
          ├── classify_yolo.py         # (예시) YOLO 분류 스크립트
          └── upscaler.py              # GFPGAN+RealESRGAN 업스케일링 스크립트
-프로젝트 구조
-
-<pre>
-프로젝트 루트/
-├── requirements_classify.txt         # 분류/업스케일링 의존성
-├── requirements_insta.txt            # 인스타그램 크롤링 의존성
-├── run_project.bat                   # 실행 배치 파일
-├── venv/
-│   ├── classify_venv/                # 분류/업스케일링 전용 venv (torch, gfpgan, realesrgan 등)
-│   └── insta_venv/                   # 인스타그램 크롤링 전용 venv (Instaloader 등)
-├── models/
-│   ├── classification/               # YOLO 등 분류 관련 모델 파일
-│   └── upscaling/                    # GFPGAN, RealESRGAN 등 업스케일링 관련 모델 파일
-└── crawling/
-    ├── config.py                     # 설정 파일 로드/저장
-    ├── downloader.py                 # 인스타그램 크롤링 모듈
-    ├── gui.py                        # Tkinter GUI
-    ├── main.py                       # 진입점 (GUI 실행)
-    ├── post_processing.py            # 분류 및 업스케일링 프로세스 제어 모듈
-    ├── utils.py                      # 공통 유틸리티 (경로 생성, 이미지 로딩/변환 등)
-    └── processing/                   # 분류/업스케일링 독립 실행형 스크립트 모음
-         ├── classify_yolo.py         # (예시) YOLO 분류 스크립트
-         └── upscaler.py              # GFPGAN+RealESRGAN 업스케일링 스크립트
 ```
 
 ## 설치 및 설정
