@@ -322,7 +322,7 @@ def user_download_with_profiles(L, search_user, target, include_images, include_
     download_content()
 
 def crawl_and_download(search_terms, target, accounts, search_type, include_images, include_videos, include_reels,
-                       include_human_classify, progress_queue, on_complete, stop_event, download_path='download', append_status=None,
+                       include_human_classify, include_upscale, progress_queue, on_complete, stop_event, download_path='download', append_status=None,
                        root=None, download_directory_var=None, allow_duplicate=False):
     """
     인스타그램 게시물을 크롤링 및 다운로드하는 메인 함수.
@@ -336,6 +336,7 @@ def crawl_and_download(search_terms, target, accounts, search_type, include_imag
         include_videos (bool): 영상 다운로드 여부.
         include_reels (bool): 릴스 다운로드 여부.
         include_human_classify (bool): 다운로드 후 인물 분류 여부.
+        include_upscale (bool): 인물 분류 후 업스케일 여부.
         progress_queue: 진행 상황 전달 큐.
         on_complete (callable): 크롤링 완료 후 호출 함수.
         stop_event: 중지 이벤트.
@@ -388,7 +389,7 @@ def crawl_and_download(search_terms, target, accounts, search_type, include_imag
     account_index = 0
     total_accounts = len(loaded_loaders)
     
-    from crawling.classifier import classify_images
+    from crawling.post_processing import process_images
     
     try:
         while account_index < total_accounts:
@@ -417,7 +418,7 @@ def crawl_and_download(search_terms, target, accounts, search_type, include_imag
                                                     term)
                         if os.path.isdir(classify_dir) and any(fname.lower().endswith(('.jpg', '.jpeg', '.png', '.webp'))
                                                               for fname in os.listdir(classify_dir)):
-                            classify_images(root, append_status, download_directory_var, term, current_username, search_type, stop_event)
+                            process_images(root, append_status, download_directory_var, term, current_username, search_type, stop_event, include_upscale)
                         if stop_event.is_set():
                             append_status("중지: 분류 중지됨.")
                             return
