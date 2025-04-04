@@ -33,7 +33,7 @@ jaraco.functools==4.0.1
 jaraco.text==3.12.1
 jax==0.4.37
 jaxlib==0.4.36
-keras==3.7.0
+keras==3.9.0
 kiwisolver==1.4.7
 lazy_loader==0.4
 libclang==18.1.1
