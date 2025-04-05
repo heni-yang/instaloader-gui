@@ -552,7 +552,19 @@ def main_gui():
     main_search_terms = []
     main_search_type = ""
 
-    def process_queue(q):
+    def remove_completed_search_term(search_term, config, append_status):
+        if search_term in config.get("SEARCH_TERMS", []):
+            config["SEARCH_TERMS"].remove(search_term)
+            save_config(config)
+            #append_status(f"{search_term} 다운로드 완료로 인해 목록에서 제거됨.")
+
+    def update_search_terms_display():
+        # word_text 위젯의 내용을 업데이트하는 예시
+        word_text.delete("1.0", tk.END)
+        if config.get("SEARCH_TERMS"):
+            word_text.insert(tk.END, "\n".join(config["SEARCH_TERMS"]))
+
+    def process_queue(q, config):
         try:
             while True:
                 msg = q.get_nowait()
@@ -562,15 +574,20 @@ def main_gui():
                     append_status(f"진행: {msg[1]} - {msg[2]} (계정: {msg[3]})")
                 elif msg[0] == "term_complete":
                     append_status(f"완료: {msg[1]} (계정: {msg[2]})")
+                    remove_completed_search_term(msg[1], config, append_status)
+                    update_search_terms_display() 
                 elif msg[0] == "term_error":
                     append_status(f"오류: {msg[1]} - {msg[2]} (계정: {msg[3]})")
+                    if "does not exist" in msg[2]:
+                        remove_completed_search_term(msg[1], config, append_status)
+                        update_search_terms_display() 
                 elif msg[0] == "account_switch":
                     append_status(f"계정 전환: {msg[1]}")
                 elif msg[0] == "account_relogin":
                     append_status(f"재로그인 시도: {msg[1]}")
         except Empty:
             pass
-        root.after(100, lambda: process_queue(q))
+        root.after(100, lambda: process_queue(q, config))
 
     def reclassify_classified_images(stop_evt):
         stop_evt.clear()
@@ -690,7 +707,7 @@ def main_gui():
             ),
             daemon=True
         ).start()
-        process_queue(q)
+        process_queue(q, config)
 
     def stop_crawling():
         global_stop_event.set()

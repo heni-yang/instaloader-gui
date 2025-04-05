@@ -43,7 +43,8 @@ def instaloader_login(username, password, download_path, include_videos=False, i
         download_comments=False,
         save_metadata=False,
         post_metadata_txt_pattern='',
-        dirname_pattern=download_path
+        dirname_pattern=download_path,
+        max_connection_attempts=10
     )
     session_file = os.path.join(SESSION_DIR, f"{username}.session")
     
@@ -152,7 +153,7 @@ def download_posts(
 
         try:
             if include_images or include_videos:
-                L.download_hashtag_top_posts(
+                L.download_hashtag_top_serp(
                     search_term,
                     max_count=total_posts,
                     post_filter=my_tag_filter,
@@ -296,7 +297,7 @@ def user_download_with_profiles(L, search_user, target, include_images, include_
             }
 
             L_content.download_profiles(**image_kwargs)
-            progress_queue.put(("term_progress", profile.username, "콘텐츠 다운로드 완료", L.context.username))
+            progress_queue.put(("term_complete", profile.username, "콘텐츠 다운로드 완료", L.context.username))
 
             if include_reels:
                 reels_folder = os.path.join(base_path, 'Reels', 'ID', profile.username)
@@ -401,7 +402,8 @@ def crawl_and_download(search_terms, target, accounts, search_type, include_imag
                     if stop_event.is_set():
                         append_status("중지: 다운로드 중지 신호 감지됨.")
                         return
-                    append_status(f"{current_username} 계정으로 {term} 다운로드 시작")
+                    #append_status(f"{current_username} 계정으로 {term} 다운로드 시작")
+                    progress_queue.put(("term_progress", term, "콘텐츠 다운로드 시작", L.context.username))
                     if search_type == 'hashtag':
                         download_posts(L, current_username, term, search_type, target,
                                        include_images, include_videos, progress_queue, stop_event, base_download_path)
@@ -411,7 +413,7 @@ def crawl_and_download(search_terms, target, accounts, search_type, include_imag
                     if stop_event.is_set():
                         append_status("중지: 다운로드 중지됨.")
                         return
-                    append_status(f"{current_username} 계정으로 {term} 다운로드 완료")
+                    #append_status(f"{current_username} 계정으로 {term} 다운로드 완료")
                     if include_human_classify and not stop_event.is_set():
                         classify_dir = os.path.join(base_download_path, 'unclassified',
                                                     'hashtag' if search_type == 'hashtag' else 'ID',
