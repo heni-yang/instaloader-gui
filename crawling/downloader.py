@@ -43,7 +43,8 @@ def instaloader_login(username, password, download_path, include_videos=False, i
         download_comments=False,
         save_metadata=False,
         post_metadata_txt_pattern='',
-        dirname_pattern=download_path
+        dirname_pattern=download_path,
+        max_connection_attempts=10
     )
     session_file = os.path.join(SESSION_DIR, f"{username}.session")
     
@@ -152,7 +153,7 @@ def download_posts(
 
         try:
             if include_images or include_videos:
-                L.download_hashtag_top_posts(
+                L.download_hashtag_top_serp(
                     search_term,
                     max_count=total_posts,
                     post_filter=my_tag_filter,
@@ -291,12 +292,12 @@ def user_download_with_profiles(L, search_user, target, include_images, include_
                 'fast_update': False,
                 'post_filter': my_post_filter,
                 'raise_errors': True,
-                'latest_stamps': latest_stamps_images,
+                'latest_stamps': None if allow_duplicate else latest_stamps_images,
                 'max_count': target if target != 0 else None,
             }
 
             L_content.download_profiles(**image_kwargs)
-            progress_queue.put(("term_progress", profile.username, "콘텐츠 다운로드 완료", L.context.username))
+            progress_queue.put(("term_complete", profile.username, "콘텐츠 다운로드 완료", L.context.username))
 
             if include_reels:
                 reels_folder = os.path.join(base_path, 'Reels', 'ID', profile.username)
@@ -322,7 +323,7 @@ def user_download_with_profiles(L, search_user, target, include_images, include_
     download_content()
 
 def crawl_and_download(search_terms, target, accounts, search_type, include_images, include_videos, include_reels,
-                       include_human_classify, progress_queue, on_complete, stop_event, download_path='download', append_status=None,
+                       include_human_classify, include_upscale, progress_queue, on_complete, stop_event, download_path='download', append_status=None,
                        root=None, download_directory_var=None, allow_duplicate=False):
     """
     인스타그램 게시물을 크롤링 및 다운로드하는 메인 함수.
@@ -336,6 +337,7 @@ def crawl_and_download(search_terms, target, accounts, search_type, include_imag
         include_videos (bool): 영상 다운로드 여부.
         include_reels (bool): 릴스 다운로드 여부.
         include_human_classify (bool): 다운로드 후 인물 분류 여부.
+        include_upscale (bool): 인물 분류 후 업스케일 여부.
         progress_queue: 진행 상황 전달 큐.
         on_complete (callable): 크롤링 완료 후 호출 함수.
         stop_event: 중지 이벤트.
@@ -388,7 +390,7 @@ def crawl_and_download(search_terms, target, accounts, search_type, include_imag
     account_index = 0
     total_accounts = len(loaded_loaders)
     
-    from crawling.classifier import classify_images
+    from crawling.post_processing import process_images
     
     try:
         while account_index < total_accounts:
@@ -400,7 +402,8 @@ def crawl_and_download(search_terms, target, accounts, search_type, include_imag
                     if stop_event.is_set():
                         append_status("중지: 다운로드 중지 신호 감지됨.")
                         return
-                    append_status(f"{current_username} 계정으로 {term} 다운로드 시작")
+                    #append_status(f"{current_username} 계정으로 {term} 다운로드 시작")
+                    progress_queue.put(("term_progress", term, "콘텐츠 다운로드 시작", L.context.username))
                     if search_type == 'hashtag':
                         download_posts(L, current_username, term, search_type, target,
                                        include_images, include_videos, progress_queue, stop_event, base_download_path)
@@ -410,20 +413,20 @@ def crawl_and_download(search_terms, target, accounts, search_type, include_imag
                     if stop_event.is_set():
                         append_status("중지: 다운로드 중지됨.")
                         return
-                    append_status(f"{current_username} 계정으로 {term} 다운로드 완료")
+                    #append_status(f"{current_username} 계정으로 {term} 다운로드 완료")
                     if include_human_classify and not stop_event.is_set():
                         classify_dir = os.path.join(base_download_path, 'unclassified',
                                                     'hashtag' if search_type == 'hashtag' else 'ID',
                                                     term)
                         if os.path.isdir(classify_dir) and any(fname.lower().endswith(('.jpg', '.jpeg', '.png', '.webp'))
                                                               for fname in os.listdir(classify_dir)):
-                            classify_images(root, append_status, download_directory_var, term, current_username, search_type, stop_event)
+                            process_images(root, append_status, download_directory_var, term, current_username, search_type, stop_event, include_upscale)
                         if stop_event.is_set():
                             append_status("중지: 분류 중지됨.")
                             return
-                    #delay = random.uniform(60, 180)
-                    #print(f"다음 호출 전 {delay:.2f}초 대기...")
-                    #time.sleep(delay)
+                    # delay = random.uniform(60, 180)
+                    # print(f"다음 호출 전 {delay:.2f}초 대기...")
+                    # time.sleep(delay)
                 break
             except Exception as e:
                 print(f"계정 처리 오류: {e}")

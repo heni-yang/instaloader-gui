@@ -1,13 +1,34 @@
-# crawling/classifier.py
+# crawling/post_processing.py
 import os
 import subprocess
 from crawling.utils import logging
 
 # 분류 스크립트 파일명 및 모듈 이름
 CLASSIFY_SCRIPT_NAME = 'classify_yolo.py'
-CLASSIFY_SCRIPT_REL_PATH = os.path.join('classification', CLASSIFY_SCRIPT_NAME)
-# -m 옵션으로 실행할 때 사용할 모듈 이름 (파일 경로와 상응함)
-CLASSIFY_MODULE_NAME = "crawling.classification." + os.path.splitext(CLASSIFY_SCRIPT_NAME)[0]
+CLASSIFY_SCRIPT_REL_PATH = os.path.join('processing', CLASSIFY_SCRIPT_NAME)
+CLASSIFY_MODULE_NAME = "crawling.processing." + os.path.splitext(CLASSIFY_SCRIPT_NAME)[0]
+
+face_upscale = 2
+overall_scale = 2
+
+def run_upscaling(python_executable, input_image_dir, face_upscale, overall_scale):
+    """
+    업스케일링 스크립트를 모듈 형식으로 호출합니다 (upscaler.py).
+    """
+    module_name = "crawling.processing.upscaler"
+    cmd = [
+        python_executable,
+        "-m",
+        module_name,
+        input_image_dir,
+        str(face_upscale),
+        str(overall_scale)
+    ]
+    print("업스케일 프로세스 시작:", " ".join(cmd))
+    process = subprocess.Popen(cmd, text=True)
+    process.communicate()
+    return process.returncode
+
 
 def run_classification_process(python_executable, classifier_module, target_image_dir, stop_event, append_status, search_type, search_term, download_path):
     """
@@ -40,7 +61,10 @@ def run_classification_process(python_executable, classifier_module, target_imag
         
         append_status(f"분류 프로세스 시작: {' '.join(cmd)}")
         project_root = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
-        process = subprocess.Popen(cmd, cwd=project_root, text=True, encoding='utf-8', shell=False)
+        env = os.environ.copy()
+        env['PYTHONPATH'] = project_root + os.pathsep + env.get('PYTHONPATH', '')
+        
+        process = subprocess.Popen(cmd, cwd=project_root, env=env, text=True, encoding='utf-8', shell=False)
         stdout, stderr = process.communicate()
         
         if stop_event.is_set():
@@ -57,7 +81,7 @@ def run_classification_process(python_executable, classifier_module, target_imag
         append_status(f"분류 스크립트 실행 중 오류: {e}")
         return None
 
-def classify_images(root, append_status, download_directory_var, search_term, username, search_type, stop_event, classified=False):
+def process_images(root, append_status, download_directory_var, search_term, username, search_type, stop_event, upscale, classified=False):
     """
     지정된 디렉토리의 이미지에 대해 분류 프로세스를 실행합니다.
     
@@ -70,6 +94,7 @@ def classify_images(root, append_status, download_directory_var, search_term, us
         search_type (str): 검색 유형 ('hashtag' 또는 'user').
         stop_event: 중지 이벤트.
         classified (bool): 이미지 분류 여부.
+        upscale (bool): 업스케일 여부.
         
     반환:
         bool: 전체 분류 성공 여부.
@@ -100,13 +125,14 @@ def classify_images(root, append_status, download_directory_var, search_term, us
     
     overall_success = True
     script_dir = os.path.dirname(os.path.abspath(__file__))
+    parent_dir = os.path.abspath(os.path.join(script_dir, '..'))
     # 파일 존재 여부는 기존 방식대로 검사 (모듈 실행과는 별개)
-    classifier_script_file = os.path.join(script_dir, 'classification', CLASSIFY_SCRIPT_NAME)
+    classifier_script_file = os.path.join(script_dir, 'processing', CLASSIFY_SCRIPT_NAME)
     
     if os.name == 'nt':
-        python_executable = os.path.join(script_dir, 'classification', 'classify_venv', 'Scripts', 'python.exe')
+        python_executable = os.path.join(parent_dir, 'venv', 'classify_venv', 'Scripts', 'python.exe')
     else:
-        python_executable = os.path.join(script_dir, 'classification', 'classify_venv', 'bin', 'python')
+        python_executable = os.path.join(parent_dir, 'venv', 'classify_venv', 'bin', 'python')
     
     if not os.path.exists(python_executable):
         append_status(f"오류: 가상환경 Python 실행 파일 없음: {python_executable}")
@@ -141,5 +167,22 @@ def classify_images(root, append_status, download_directory_var, search_term, us
         else:
             append_status(f"[{search_type.upper()}] {search_term} 분류 오류: {target_image_dir}")
             overall_success = False
+
+    if search_type == "hashtag":
+        person_dir = os.path.join(download_path, '인물', f"hashtag_{search_term}")
+    else:
+        person_dir = os.path.join(download_path, '인물', f"user_{search_term}")
+            
+    if upscale and os.path.isdir(person_dir):
+        append_status(f"[{search_type.upper()}] {search_term} 업스케일 시작: {person_dir}")
+        # 지원하는 이미지 확장자 목록
+        supported_ext = ('.jpg', '.jpeg', '.png')
+        ret = run_upscaling(python_executable, person_dir, face_upscale, overall_scale)
+        if ret == 0:
+            append_status(f"업스케일링 완료: {person_dir}")
+        else:
+            append_status(f"업스케일링 오류: {person_dir}")
+            overall_success = False
+
     
     return overall_success

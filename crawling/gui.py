@@ -4,13 +4,14 @@ import threading
 import tkinter as tk
 from tkinter import ttk, scrolledtext, filedialog
 from queue import Queue, Empty
+from datetime import datetime
+import configparser
+import subprocess
+
 from crawling.config import load_config, save_config
 from crawling.downloader import crawl_and_download
-from crawling.classifier import classify_images
+from crawling.post_processing import process_images
 from crawling.utils import create_dir_if_not_exists
-import subprocess
-import configparser
-from datetime import datetime
 
 # 프로젝트 루트 및 기본 다운로드 경로 설정
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
@@ -63,7 +64,7 @@ def main_gui():
     # 설정 로드 및 계정 불러오기
     config = load_config()
     loaded_accounts = config['ACCOUNTS'][:]
-
+    loaded_searchtype = config['LAST_SEARCH_TYPE'][:]
     # 상태 메시지 출력 영역
     status_frame = ttk.LabelFrame(root, text="상태", padding=3)
     status_frame.grid(row=7, column=0, padx=10, pady=5, sticky='nsew')
@@ -235,39 +236,82 @@ def main_gui():
     search_type_frame.columnconfigure(1, weight=1)
 
     search_type_var = tk.StringVar(value="hashtag")
+    # 해시태그 검색 영역 (수정된 부분)
     hashtag_frame = ttk.Frame(search_type_frame)
     hashtag_frame.grid(row=0, column=0, padx=5, pady=5, sticky='nsew')
     hashtag_frame.columnconfigure(0, weight=1)
-    ttk.Radiobutton(hashtag_frame, text="해시태그 검색", variable=search_type_var, value="hashtag").grid(row=0, column=0, sticky='w')
-    hashtag_check_frame = ttk.Frame(hashtag_frame)
-    hashtag_check_frame.grid(row=1, column=0, sticky='w', pady=2)
-    include_images_var_hashtag = tk.BooleanVar(value=True)
+    hashtag_frame.columnconfigure(1, weight=1)
+    ttk.Radiobutton(hashtag_frame, text="해시태그 검색", variable=search_type_var, value="hashtag")\
+        .grid(row=0, column=0, columnspan=2, sticky='w')
+
+    # BooleanVar 변수 생성
+    include_images_var_hashtag = tk.BooleanVar(value=True)    
     include_videos_var_hashtag = tk.BooleanVar(value=False)
     include_human_classify_var_hashtag = tk.BooleanVar(value=False)
-    include_images_check_hashtag = ttk.Checkbutton(hashtag_check_frame, text="이미지", variable=include_images_var_hashtag)
-    include_images_check_hashtag.pack(side='left', padx=(0,5))
-    include_videos_check_hashtag = ttk.Checkbutton(hashtag_check_frame, text="영상", variable=include_videos_var_hashtag)
-    include_videos_check_hashtag.pack(side='left')
-    include_human_classify_check_hashtag = ttk.Checkbutton(hashtag_frame, text="인물 분류", variable=include_human_classify_var_hashtag)
-    include_human_classify_check_hashtag.grid(row=2, column=0, sticky='w', padx=20)
-    include_human_classify_check_hashtag.configure(state='disabled')
+    upscale_var_hashtag = tk.BooleanVar(value=False)
 
+    # 1행: 이미지, 영상 체크박스
+    include_images_check_hashtag = ttk.Checkbutton(hashtag_frame, text="이미지", variable=include_images_var_hashtag)
+    include_images_check_hashtag.grid(row=1, column=0, sticky='w', padx=5, pady=2)
+    include_videos_check_hashtag = ttk.Checkbutton(hashtag_frame, text="영상", variable=include_videos_var_hashtag)
+    include_videos_check_hashtag.grid(row=1, column=1, sticky='w', padx=5, pady=2)
+
+    # 2행: 인물 분류, 업스케일링 체크박스
+    include_human_classify_check_hashtag = ttk.Checkbutton(hashtag_frame, text="인물 분류", variable=include_human_classify_var_hashtag)
+    include_human_classify_check_hashtag.grid(row=2, column=0, sticky='w', padx=5, pady=2)
+    upscale_checkbox_hashtag = ttk.Checkbutton(hashtag_frame, text="업스케일링", variable=upscale_var_hashtag)
+    upscale_checkbox_hashtag.grid(row=2, column=1, sticky='w', padx=5, pady=2)
+    # 초기에는 인물 분류가 선택되지 않았으므로 업스케일링 체크박스 비활성화
+    upscale_checkbox_hashtag.configure(state='disabled')
+
+    # 인물 분류 체크박스 값에 따라 업스케일링 체크박스 활성/비활성 제어
+    def toggle_upscale_hashtag(*args):
+        if include_human_classify_var_hashtag.get():
+            upscale_checkbox_hashtag.configure(state='normal')
+        else:
+            upscale_var_hashtag.set(False)
+            upscale_checkbox_hashtag.configure(state='disabled')
+    include_human_classify_var_hashtag.trace_add('write', toggle_upscale_hashtag)
+
+
+    # 사용자 ID 검색 영역 (수정된 부분)
     user_id_frame = ttk.Frame(search_type_frame)
     user_id_frame.grid(row=0, column=1, padx=5, pady=5, sticky='nsew')
     user_id_frame.columnconfigure(0, weight=1)
-    ttk.Radiobutton(user_id_frame, text="사용자 ID 검색", variable=search_type_var, value="user").grid(row=0, column=0, sticky='w')
-    user_id_check_frame = ttk.Frame(user_id_frame)
-    user_id_check_frame.grid(row=1, column=0, sticky='w', pady=2)
+    user_id_frame.columnconfigure(1, weight=1)
+    ttk.Radiobutton(user_id_frame, text="사용자 ID 검색", variable=search_type_var, value="user")\
+        .grid(row=0, column=0, columnspan=2, sticky='w')
+
+    # BooleanVar 변수 생성
     include_images_var_user = tk.BooleanVar(value=True)
     include_reels_var_user = tk.BooleanVar(value=False)
     include_human_classify_var_user = tk.BooleanVar(value=False)
-    include_images_check_user = ttk.Checkbutton(user_id_check_frame, text="이미지", variable=include_images_var_user)
-    include_images_check_user.pack(side='left', padx=(0,5))
-    include_reels_check_user = ttk.Checkbutton(user_id_check_frame, text="릴스", variable=include_reels_var_user)
-    include_reels_check_user.pack(side='left')
+    upscale_var_user = tk.BooleanVar(value=False)
+
+    # 1행: 이미지, 릴스 체크박스
+    include_images_check_user = ttk.Checkbutton(user_id_frame, text="이미지", variable=include_images_var_user)
+    include_images_check_user.grid(row=1, column=0, sticky='w', padx=5, pady=2)
+    include_reels_check_user = ttk.Checkbutton(user_id_frame, text="릴스", variable=include_reels_var_user)
+    include_reels_check_user.grid(row=1, column=1, sticky='w', padx=5, pady=2)
+
+    # 2행: 인물 분류, 업스케일링 체크박스
     include_human_classify_check_user = ttk.Checkbutton(user_id_frame, text="인물 분류", variable=include_human_classify_var_user)
-    include_human_classify_check_user.grid(row=2, column=0, sticky='w', padx=20)
-    include_human_classify_check_user.configure(state='disabled')
+    include_human_classify_check_user.grid(row=2, column=0, sticky='w', padx=5, pady=2)
+    upscale_checkbox_user = ttk.Checkbutton(user_id_frame, text="업스케일링", variable=upscale_var_user)
+    upscale_checkbox_user.grid(row=2, column=1, sticky='w', padx=5, pady=2)
+    upscale_checkbox_user.configure(state='disabled')
+    include_images_var_user.trace_add('write',
+        lambda *args: toggle_human_classify(user_id_frame, include_images_var_user, include_human_classify_var_user)
+)
+    # 인물 분류 체크박스 값에 따라 업스케일링 체크박스 활성/비활성 제어
+    def toggle_upscale_user(*args):
+        if include_human_classify_var_user.get():
+            upscale_checkbox_user.configure(state='normal')
+        else:
+            upscale_var_user.set(False)
+            upscale_checkbox_user.configure(state='disabled')
+    include_human_classify_var_user.trace_add('write', toggle_upscale_user)
+
 
     allow_duplicate_var = tk.BooleanVar(value=False)
     ttk.Checkbutton(search_type_frame, text="중복 다운로드 허용", variable=allow_duplicate_var).grid(row=3, column=0, columnspan=2, sticky='w', padx=5, pady=5)
@@ -284,7 +328,10 @@ def main_gui():
                 include_human_classify_check_hashtag.configure(state='disabled')
             else:
                 include_human_classify_check_user.configure(state='disabled')
-
+                
+    include_images_var_hashtag.trace_add('write',
+        lambda *args: toggle_human_classify(hashtag_frame, include_images_var_hashtag, include_human_classify_var_hashtag)
+)                              
     def on_search_type_change(*args):
         stype = search_type_var.get()
         if stype == "hashtag":
@@ -505,7 +552,19 @@ def main_gui():
     main_search_terms = []
     main_search_type = ""
 
-    def process_queue(q):
+    def remove_completed_search_term(search_term, config, append_status):
+        if search_term in config.get("SEARCH_TERMS", []):
+            config["SEARCH_TERMS"].remove(search_term)
+            save_config(config)
+            #append_status(f"{search_term} 다운로드 완료로 인해 목록에서 제거됨.")
+
+    def update_search_terms_display():
+        # word_text 위젯의 내용을 업데이트하는 예시
+        word_text.delete("1.0", tk.END)
+        if config.get("SEARCH_TERMS"):
+            word_text.insert(tk.END, "\n".join(config["SEARCH_TERMS"]))
+
+    def process_queue(q, config):
         try:
             while True:
                 msg = q.get_nowait()
@@ -515,15 +574,20 @@ def main_gui():
                     append_status(f"진행: {msg[1]} - {msg[2]} (계정: {msg[3]})")
                 elif msg[0] == "term_complete":
                     append_status(f"완료: {msg[1]} (계정: {msg[2]})")
+                    remove_completed_search_term(msg[1], config, append_status)
+                    update_search_terms_display() 
                 elif msg[0] == "term_error":
                     append_status(f"오류: {msg[1]} - {msg[2]} (계정: {msg[3]})")
+                    if "does not exist" in msg[2]:
+                        remove_completed_search_term(msg[1], config, append_status)
+                        update_search_terms_display() 
                 elif msg[0] == "account_switch":
                     append_status(f"계정 전환: {msg[1]}")
                 elif msg[0] == "account_relogin":
                     append_status(f"재로그인 시도: {msg[1]}")
         except Empty:
             pass
-        root.after(100, lambda: process_queue(q))
+        root.after(100, lambda: process_queue(q, config))
 
     def reclassify_classified_images(stop_evt):
         stop_evt.clear()
@@ -558,9 +622,10 @@ def main_gui():
                 if stop_evt.is_set():
                     append_status("중지: 재분류 중지됨.")
                     return
-                success = classify_images(
+                success = process_images(
                     root, append_status, download_directory_var,
                     term, "", config['LAST_SEARCH_TYPE'], stop_evt,
+                    upscale=False,
                     classified=True
                 )
                 root.after(0, lambda p=(i/total)*100: progress_var.set(p))
@@ -606,6 +671,10 @@ def main_gui():
             include_human_classify_var_hashtag.get() if config['LAST_SEARCH_TYPE'] == "hashtag"
             else include_human_classify_var_user.get() if config['LAST_SEARCH_TYPE'] == "user" else False
         )
+        config['INCLUDE_UPSCALE'] = (
+            upscale_var_hashtag.get() if config['LAST_SEARCH_TYPE'] == "hashtag"
+            else upscale_var_user.get() if config['LAST_SEARCH_TYPE'] == "user" else False
+        )
         allow_duplicate = allow_duplicate_var.get()
         d_path = download_directory_var.get().strip()
         if not os.path.isdir(d_path):
@@ -626,6 +695,7 @@ def main_gui():
                 config['INCLUDE_VIDEOS'],
                 config['INCLUDE_REELS'],
                 config['INCLUDE_HUMAN_CLASSIFY'],
+                config['INCLUDE_UPSCALE'],
                 q,
                 on_complete,
                 global_stop_event,
@@ -637,7 +707,7 @@ def main_gui():
             ),
             daemon=True
         ).start()
-        process_queue(q)
+        process_queue(q, config)
 
     def stop_crawling():
         global_stop_event.set()
@@ -649,7 +719,7 @@ def main_gui():
         button_frame.columnconfigure(i, weight=1)
     ttk.Button(button_frame, text="크롤링 시작", command=start_crawling, width=15).grid(row=0, column=0, padx=5, pady=2, sticky='ew')
     ttk.Button(button_frame, text="중지", command=stop_crawling, width=15).grid(row=0, column=1, padx=5, pady=2, sticky='ew')
-    ttk.Button(existing_dirs_frame, text="선택된 이미지 분류", command=lambda: classify_images(global_stop_event), width=20).grid(row=2, column=2, padx=5, pady=2, sticky='ew')
+    ttk.Button(existing_dirs_frame, text="선택된 이미지 분류", command=lambda: process_images(global_stop_event), width=20).grid(row=2, column=2, padx=5, pady=2, sticky='ew')
 
     def on_complete(message):
         append_status(f"완료: {message}")
@@ -672,8 +742,10 @@ def main_gui():
         append_status("저장된 검색어 자동 입력됨.")
     
     def initial_toggle():
-        toggle_human_classify(hashtag_frame, include_images_var_hashtag, include_human_classify_var_hashtag)
-        toggle_human_classify(user_id_frame, include_images_var_user, include_human_classify_var_user)
+        if loaded_searchtype == 'hashtag':
+            toggle_human_classify(hashtag_frame, include_images_var_hashtag, include_human_classify_var_hashtag)
+        else:
+            toggle_human_classify(user_id_frame, include_images_var_user, include_human_classify_var_user)
     initial_toggle()
     
     root.rowconfigure(7, weight=1)
