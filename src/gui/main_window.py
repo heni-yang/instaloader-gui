@@ -25,7 +25,8 @@ from .handlers.queue_handler import (
 )
 from .dialogs.settings import (
     delete_selected_items, load_existing_directories,
-    sort_user_ids_by_creation_desc, sort_user_ids_by_creation_asc, sort_user_ids_by_modified_asc
+    sort_user_ids_by_creation_desc, sort_user_ids_by_creation_asc, 
+    sort_user_ids_by_ini_asc, sort_user_ids_by_ini_desc
 )
 from .dialogs.account_management import (
     add_account, remove_account, remove_session, save_new_account
@@ -212,19 +213,16 @@ def main_gui():
     allow_duplicate_var = tk.BooleanVar(value=False)
     ttk.Checkbutton(search_type_frame, text="중복 다운로드 허용", variable=allow_duplicate_var).grid(row=3, column=0, columnspan=2, sticky='w', padx=5, pady=5)
 
-    # Rate Limiting 설정
-    rate_limit_frame = ttk.LabelFrame(search_type_frame, text="속도 제한 설정", padding=5)
+    # 요청 간 대기시간 설정
+    rate_limit_frame = ttk.LabelFrame(search_type_frame, text="요청 간 대기시간", padding=5)
     rate_limit_frame.grid(row=4, column=0, columnspan=2, sticky='ew', padx=5, pady=5)
     
-    ttk.Label(rate_limit_frame, text="요청 간 대기 시간 (초):").grid(row=0, column=0, sticky='w', padx=5, pady=2)
-    wait_time_var = tk.StringVar(value=str(config.get('RATE_LIMIT_MIN_SLEEP', 3.0)))
+    ttk.Label(rate_limit_frame, text="추가 대기시간 (초, 0=자동):").grid(row=0, column=0, sticky='w', padx=5, pady=2)
+    wait_time_var = tk.StringVar(value=str(config.get('REQUEST_WAIT_TIME', 0.0)))
     wait_time_entry = ttk.Entry(rate_limit_frame, textvariable=wait_time_var, width=10)
     wait_time_entry.grid(row=0, column=1, sticky='w', padx=5, pady=2)
     
-    ttk.Label(rate_limit_frame, text="최대 대기 시간 (초):").grid(row=1, column=0, sticky='w', padx=5, pady=2)
-    max_wait_time_var = tk.StringVar(value=str(config.get('RATE_LIMIT_MAX_SLEEP', 10.0)))
-    max_wait_time_entry = ttk.Entry(rate_limit_frame, textvariable=max_wait_time_var, width=10)
-    max_wait_time_entry.grid(row=1, column=1, sticky='w', padx=5, pady=2)
+    ttk.Label(rate_limit_frame, text="(0초: Instaloader 자동 제어, 1초 이상: 추가 대기)").grid(row=1, column=0, columnspan=2, sticky='w', padx=5, pady=2)
 
     # toggle 함수들을 모듈에서 호출
     def toggle_human_classify_wrapper(parent_frame, img_var, human_var):
@@ -271,7 +269,7 @@ def main_gui():
     ttk.Button(download_dir_frame, text="경로 선택", command=select_download_directory_main_wrapper, width=12).grid(row=0, column=2, padx=5, pady=5)
     ttk.Button(download_dir_frame, text="폴더 열기", command=open_download_directory_wrapper, width=12).grid(row=0, column=3, padx=5, pady=5)
 
-    existing_dirs_frame = ttk.LabelFrame(root, text="기존 다운로드 디렉토리", padding=5)
+    existing_dirs_frame = ttk.LabelFrame(root, text="다운로드된 프로필 목록", padding=5)
     existing_dirs_frame.grid(row=4, column=0, padx=10, pady=10, sticky='nsew')
     for i in range(3):
         existing_dirs_frame.columnconfigure(i, weight=1)
@@ -298,17 +296,34 @@ def main_gui():
     selection_buttons_frame.grid(row=0, column=2, padx=10, pady=5, sticky='nsew')
     selection_buttons_frame.columnconfigure(0, weight=1)
     selection_buttons_frame.columnconfigure(1, weight=1)
+    # 추가 함수들을 모듈에서 호출
+    def add_selected_hashtags_wrapper():
+        add_items_from_listbox(hashtag_listbox, word_text, "해시태그")
+        append_status("선택된 해시태그가 검색 목록에 추가되었습니다.")
+    
+    def add_all_hashtags_wrapper():
+        add_all_items_from_listbox(hashtag_listbox, word_text, "해시태그")
+        append_status("모든 해시태그가 검색 목록에 추가되었습니다.")
+    
+    def add_selected_user_ids_wrapper():
+        add_items_from_listbox(user_id_listbox, word_text, "사용자 ID")
+        append_status("선택된 사용자 ID가 검색 목록에 추가되었습니다.")
+    
+    def add_all_user_ids_wrapper():
+        add_all_items_from_listbox(user_id_listbox, word_text, "사용자 ID")
+        append_status("모든 사용자 ID가 검색 목록에 추가되었습니다.")
+    
     ttk.Button(selection_buttons_frame, text="선택된 해시태그 추가",
-               command=lambda: add_items_from_listbox(hashtag_listbox, word_text, "해시태그")
+               command=add_selected_hashtags_wrapper
     ).grid(row=0, column=0, padx=5, pady=2, sticky='ew')
     ttk.Button(selection_buttons_frame, text="모든 해시태그 추가",
-               command=lambda: add_all_items_from_listbox(hashtag_listbox, word_text, "해시태그")
+               command=add_all_hashtags_wrapper
     ).grid(row=0, column=1, padx=5, pady=2, sticky='ew')
     ttk.Button(selection_buttons_frame, text="선택된 사용자 ID 추가",
-               command=lambda: add_items_from_listbox(user_id_listbox, word_text, "사용자 ID")
+               command=add_selected_user_ids_wrapper
     ).grid(row=1, column=0, padx=5, pady=2, sticky='ew')
     ttk.Button(selection_buttons_frame, text="모든 사용자 ID 추가",
-               command=lambda: add_all_items_from_listbox(user_id_listbox, word_text, "사용자 ID")
+               command=add_all_user_ids_wrapper
     ).grid(row=1, column=1, padx=5, pady=2, sticky='ew')
 
     user_ids_cached = []
@@ -328,13 +343,16 @@ def main_gui():
 
     # 정렬 함수들을 모듈에서 호출
     def sort_user_ids_by_creation_desc_wrapper():
-        sort_user_ids_by_creation_desc(user_id_listbox, append_status)
+        sort_user_ids_by_creation_desc(user_id_listbox, append_status, download_directory_var)
 
     def sort_user_ids_by_creation_asc_wrapper():
-        sort_user_ids_by_creation_asc(user_id_listbox, append_status)
+        sort_user_ids_by_creation_asc(user_id_listbox, append_status, download_directory_var)
 
-    def sort_user_ids_by_modified_asc_wrapper():
-        sort_user_ids_by_modified_asc(user_id_listbox, append_status)
+    def sort_user_ids_by_ini_asc_wrapper():
+        sort_user_ids_by_ini_asc(user_id_listbox, append_status)
+
+    def sort_user_ids_by_ini_desc_wrapper():
+        sort_user_ids_by_ini_desc(user_id_listbox, append_status)
     
     # 존재하지 않는 프로필 관리 함수를 모듈에서 호출
     def manage_profiles_wrapper():
@@ -346,8 +364,9 @@ def main_gui():
     sort_buttons_frame.columnconfigure(0, weight=1)
     sort_buttons_frame.columnconfigure(1, weight=1)
     ttk.Button(sort_buttons_frame, text="생성일 내림차순", command=sort_user_ids_by_creation_desc_wrapper).grid(row=0, column=0, padx=5, pady=2, sticky='ew')
-    ttk.Button(sort_buttons_frame, text="(INI) 오름차순", command=sort_user_ids_by_modified_asc_wrapper).grid(row=0, column=1, padx=5, pady=2, sticky='ew')
+    ttk.Button(sort_buttons_frame, text="INI 내림차순", command=sort_user_ids_by_ini_desc_wrapper).grid(row=0, column=1, padx=5, pady=2, sticky='ew')
     ttk.Button(sort_buttons_frame, text="생성일 오름차순", command=sort_user_ids_by_creation_asc_wrapper).grid(row=1, column=0, padx=5, pady=2, sticky='ew')
+    ttk.Button(sort_buttons_frame, text="INI 오름차순", command=sort_user_ids_by_ini_asc_wrapper).grid(row=1, column=1, padx=5, pady=2, sticky='ew')
     ttk.Button(existing_dirs_frame, text="새로 고침", command=load_existing_directories_wrapper, width=15).grid(row=1, column=0, pady=5)
 
     progress_frame = ttk.Frame(root)
@@ -622,14 +641,18 @@ def main_gui():
         if not os.path.isdir(d_path):
             create_dir_if_not_exists(d_path)
             append_status(f"다운로드 경로 생성됨: {d_path}")
-        # Rate Limiting 설정 저장
+        # 요청 간 대기시간 설정 저장
         try:
-            config['RATE_LIMIT_MIN_SLEEP'] = float(wait_time_var.get())
-            config['RATE_LIMIT_MAX_SLEEP'] = float(max_wait_time_var.get())
+            request_wait_time = float(wait_time_var.get())
+            if request_wait_time < 0:
+                append_status("경고: 대기시간은 0 이상이어야 합니다. 0초로 설정합니다.")
+                request_wait_time = 0.0
+            config['REQUEST_WAIT_TIME'] = request_wait_time
+            print(f"[REQUEST_WAIT_DEBUG] GUI 설정 저장됨 - 추가 대기시간: {request_wait_time}초")
         except ValueError:
-            append_status("경고: Rate Limiting 설정이 잘못되었습니다. 기본값을 사용합니다.")
-            config['RATE_LIMIT_MIN_SLEEP'] = 3.0
-            config['RATE_LIMIT_MAX_SLEEP'] = 10.0
+            append_status("경고: 대기시간 설정이 잘못되었습니다. 0초로 설정합니다.")
+            config['REQUEST_WAIT_TIME'] = 0.0
+            print(f"[REQUEST_WAIT_DEBUG] GUI 설정 오류 - 기본값 사용: 0초")
         
         # 마지막 다운로드 경로 업데이트
         config['LAST_DOWNLOAD_PATH'] = d_path

@@ -8,14 +8,14 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 from ...utils.config import load_config, save_config
 
-def add_items_from_listbox(listbox, text_widget, item_label, append_status_func):
+def add_items_from_listbox(listbox, text_widget, item_label):
     """
     리스트박스에서 선택된 항목들을 텍스트 위젯에 추가합니다.
     """
     indices = listbox.curselection()
     items = [listbox.get(i) for i in indices]
     if not items:
-        append_status_func(f"정보: 추가할 {item_label}를 선택하세요.")
+        print(f"정보: 추가할 {item_label}를 선택하세요.")
         return
     
     current_text = text_widget.get("1.0", tk.END).strip()
@@ -23,15 +23,15 @@ def add_items_from_listbox(listbox, text_widget, item_label, append_status_func)
     updated_text = current_text + "\n" + new_text if current_text else new_text
     text_widget.delete("1.0", tk.END)
     text_widget.insert(tk.END, updated_text)
-    append_status_func(f"성공: {len(items)}개의 {item_label} 추가됨.")
+    print(f"성공: {len(items)}개의 {item_label} 추가됨.")
 
-def add_all_items_from_listbox(listbox, text_widget, item_label, append_status_func):
+def add_all_items_from_listbox(listbox, text_widget, item_label):
     """
     리스트박스의 모든 항목을 텍스트 위젯에 추가합니다.
     """
     items = listbox.get(0, tk.END)
     if not items:
-        append_status_func(f"정보: 추가할 {item_label}가 없습니다.")
+        print(f"정보: 추가할 {item_label}가 없습니다.")
         return
     
     current_text = text_widget.get("1.0", tk.END).strip()
@@ -39,7 +39,7 @@ def add_all_items_from_listbox(listbox, text_widget, item_label, append_status_f
     updated_text = current_text + "\n" + new_text if current_text else new_text
     text_widget.delete("1.0", tk.END)
     text_widget.insert(tk.END, updated_text)
-    append_status_func(f"성공: 모든 {item_label} 추가됨.")
+    print(f"성공: 모든 {item_label} 추가됨.")
 
 def toggle_upscale_hashtag(include_human_classify_var_hashtag, upscale_var_hashtag, upscale_checkbox_hashtag, *args):
     """

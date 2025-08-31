@@ -135,63 +135,80 @@ def load_existing_directories(hashtag_listbox, user_id_listbox, download_directo
     for uid, _, _ in sorted(user_ids_cached, key=lambda x: x[1], reverse=True):
         user_id_listbox.insert(tk.END, uid)
 
-def sort_user_ids_by_creation_desc(user_id_listbox, append_status_func):
+def sort_user_ids_by_creation_desc(user_id_listbox, append_status_func, download_directory_var=None):
     """
-    사용자 ID를 생성 시간 내림차순으로 정렬합니다.
+    사용자 ID를 디렉토리 생성일 내림차순으로 정렬합니다.
     """
-    ini_path = os.path.join(os.path.dirname(__file__), 'latest-stamps-images.ini')
-    if not os.path.isfile(ini_path):
-        append_status_func("오류: latest-stamps-images.ini 없음.")
+    if download_directory_var:
+        main_download_dir = download_directory_var.get()
+    else:
+        from ...utils.environment import Environment
+        main_download_dir = Environment.DOWNLOADS_DIR
+    
+    people_dir = os.path.join(main_download_dir, '인물')
+    
+    if not os.path.isdir(people_dir):
+        append_status_func(f"오류: 인물 디렉토리가 존재하지 않습니다: {people_dir}")
         return
     
-    parser = configparser.ConfigParser()
-    parser.read(ini_path, encoding='utf-8')
-    
-    # 사용자 ID와 생성 시간을 추출
+    # 사용자 ID와 디렉토리 생성일을 추출
     user_times = []
-    for section in parser.sections():
-        if parser[section].get('post-timestamp'):
+    for d in os.listdir(people_dir):
+        full_path = os.path.join(people_dir, d)
+        if os.path.isdir(full_path) and d.startswith("user_"):
+            actual_uid = d[len("user_"):]
             try:
-                timestamp = parser[section]['post-timestamp'].strip()
-                dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
-                user_times.append((section, dt))
-            except:
-                continue
+                ct = os.path.getctime(full_path)
+                user_times.append((actual_uid, ct))
+            except Exception as e:
+                append_status_func(f"경고: {d} 생성일 오류: {e}")
     
-    # 생성 시간 내림차순으로 정렬
+    # 생성일 내림차순으로 정렬
     user_times.sort(key=lambda x: x[1], reverse=True)
+    
+    # 디버깅: 정렬 결과 출력
+    append_status_func(f"디버깅: 정렬된 사용자 목록 (생성일 기준)")
+    for user, ct in user_times[:5]:  # 상위 5개만 출력
+        from datetime import datetime
+        ct_str = datetime.fromtimestamp(ct).strftime('%Y-%m-%d %H:%M:%S')
+        append_status_func(f"  {user}: {ct_str}")
     
     # 정렬된 사용자 ID를 리스트박스에 반영
     user_id_listbox.delete(0, tk.END)
     for user, _ in user_times:
         user_id_listbox.insert(tk.END, user)
     
-    append_status_func("사용자 ID가 생성일 내림차순 정렬됨.")
+    append_status_func("사용자 ID가 디렉토리 생성일 내림차순 정렬됨.")
 
-def sort_user_ids_by_creation_asc(user_id_listbox, append_status_func):
+def sort_user_ids_by_creation_asc(user_id_listbox, append_status_func, download_directory_var=None):
     """
-    사용자 ID를 생성 시간 오름차순으로 정렬합니다.
+    사용자 ID를 디렉토리 생성일 오름차순으로 정렬합니다.
     """
-    ini_path = os.path.join(os.path.dirname(__file__), 'latest-stamps-images.ini')
-    if not os.path.isfile(ini_path):
-        append_status_func("오류: latest-stamps-images.ini 없음.")
+    if download_directory_var:
+        main_download_dir = download_directory_var.get()
+    else:
+        from ...utils.environment import Environment
+        main_download_dir = Environment.DOWNLOADS_DIR
+    
+    people_dir = os.path.join(main_download_dir, '인물')
+    
+    if not os.path.isdir(people_dir):
+        append_status_func(f"오류: 인물 디렉토리가 존재하지 않습니다: {people_dir}")
         return
     
-    parser = configparser.ConfigParser()
-    parser.read(ini_path, encoding='utf-8')
-    
-    # 사용자 ID와 생성 시간을 추출
+    # 사용자 ID와 디렉토리 생성일을 추출
     user_times = []
-    for section in parser.sections():
-        if parser[section].get('post-timestamp'):
+    for d in os.listdir(people_dir):
+        full_path = os.path.join(people_dir, d)
+        if os.path.isdir(full_path) and d.startswith("user_"):
+            actual_uid = d[len("user_"):]
             try:
-                timestamp = parser[section]['post-timestamp'].strip()
-                dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
-                user_times.append((section, dt))
-            except:
-                continue
+                ct = os.path.getctime(full_path)
+                user_times.append((actual_uid, ct))
+            except Exception as e:
+                append_status_func(f"경고: {d} 생성일 오류: {e}")
     
-    # 생성 시간 오름차순으로 정렬
+    # 생성일 오름차순으로 정렬
     user_times.sort(key=lambda x: x[1])
     
     # 정렬된 사용자 ID를 리스트박스에 반영
@@ -199,13 +216,14 @@ def sort_user_ids_by_creation_asc(user_id_listbox, append_status_func):
     for user, _ in user_times:
         user_id_listbox.insert(tk.END, user)
     
-    append_status_func("사용자 ID가 생성일 오름차순 정렬됨.")
+    append_status_func("사용자 ID가 디렉토리 생성일 오름차순 정렬됨.")
 
-def sort_user_ids_by_modified_asc(user_id_listbox, append_status_func):
+def sort_user_ids_by_ini_asc(user_id_listbox, append_status_func):
     """
-    사용자 ID를 수정 시간 오름차순으로 정렬합니다.
+    사용자 ID를 INI 파일 timestamp 오름차순으로 정렬합니다.
     """
-    ini_path = os.path.join(os.path.dirname(__file__), 'latest-stamps-images.ini')
+    from ...utils.environment import Environment
+    ini_path = Environment.STAMPS_FILE
     if not os.path.isfile(ini_path):
         append_status_func("오류: latest-stamps-images.ini 없음.")
         return
@@ -228,7 +246,7 @@ def sort_user_ids_by_modified_asc(user_id_listbox, append_status_func):
             if dt:
                 ini_ts[section] = dt
     
-    # 수정 시간 오름차순으로 정렬
+    # INI timestamp 오름차순으로 정렬
     sorted_users = sorted(ini_ts.items(), key=lambda x: x[1])
     
     # 정렬된 사용자 ID를 리스트박스에 반영
@@ -236,4 +254,42 @@ def sort_user_ids_by_modified_asc(user_id_listbox, append_status_func):
     for user, _ in sorted_users:
         user_id_listbox.insert(tk.END, user)
     
-    append_status_func("INI 기준 오름차순 정렬 완료.")
+    append_status_func("사용자 ID가 INI timestamp 오름차순 정렬됨.")
+
+def sort_user_ids_by_ini_desc(user_id_listbox, append_status_func):
+    """
+    사용자 ID를 INI 파일 timestamp 내림차순으로 정렬합니다.
+    """
+    from ...utils.environment import Environment
+    ini_path = Environment.STAMPS_FILE
+    if not os.path.isfile(ini_path):
+        append_status_func("오류: latest-stamps-images.ini 없음.")
+        return
+    
+    parser = configparser.ConfigParser()
+    parser.read(ini_path, encoding='utf-8')
+    
+    ini_ts = {}
+    for section in parser.sections():
+        if parser[section].get('post-timestamp'):
+            raw = parser[section]['post-timestamp'].strip()
+            dt = None
+            try:
+                dt = datetime.strptime(raw, "%Y-%m-%dT%H:%M:%S.%f%z")
+            except ValueError:
+                try:
+                    dt = datetime.fromisoformat(raw)
+                except Exception:
+                    pass
+            if dt:
+                ini_ts[section] = dt
+    
+    # INI timestamp 내림차순으로 정렬
+    sorted_users = sorted(ini_ts.items(), key=lambda x: x[1], reverse=True)
+    
+    # 정렬된 사용자 ID를 리스트박스에 반영
+    user_id_listbox.delete(0, tk.END)
+    for user, _ in sorted_users:
+        user_id_listbox.insert(tk.END, user)
+    
+    append_status_func("사용자 ID가 INI timestamp 내림차순 정렬됨.")

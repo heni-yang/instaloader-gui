@@ -23,9 +23,7 @@ default_config = {
     'NON_EXISTENT_PROFILE_IDS': [],  # 존재하지 않는 프로필 ID 목록 (profile-id 기반)
     'PRIVATE_NOT_FOLLOWED_PROFILES': [],  # 비공개 프로필 목록 (username 기반)
     'PRIVATE_NOT_FOLLOWED_PROFILE_IDS': [],  # 비공개 프로필 ID 목록 (profile-id 기반)
-    'RATE_LIMIT_MIN_SLEEP': 3.0,  # 최소 대기 시간 (초)
-    'RATE_LIMIT_MAX_SLEEP': 10.0,  # 최대 대기 시간 (초)
-    'RATE_LIMIT_MULTIPLIER': 1.5   # 대기 시간 배수
+    'REQUEST_WAIT_TIME': 0.0  # 요청 간 추가 대기시간 (초, 0=자동)
 }
 
 def load_config():

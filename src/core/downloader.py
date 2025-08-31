@@ -2,8 +2,27 @@
 import os
 import instaloader
 from instaloader import Profile, LatestStamps, RateController, exceptions
-from itertools import islice
 import time
+from itertools import islice
+
+# 커스텀 RateController 클래스 (단순화된 버전)
+class CustomRateController(RateController):
+    def __init__(self, context, additional_wait_time=0.0):
+        super().__init__(context)
+        self.additional_wait_time = additional_wait_time
+        print(f"[REQUEST_WAIT_DEBUG] CustomRateController 초기화 - 추가 대기시간: {self.additional_wait_time}초")
+    
+    def wait_before_query(self, query_type: str) -> None:
+        # Instaloader의 기본 대기시간 계산
+        base_waittime = self.query_waittime(query_type, time.monotonic(), False)
+        
+        # 기본 동작만 수행 (프로필 간 대기는 다운로더 레벨에서 처리)
+        if base_waittime > 0:
+            print(f"[REQUEST_WAIT_DEBUG] 기본 대기 시작: {base_waittime}초")
+            self.sleep(base_waittime)
+        
+        # Instaloader의 내부 상태 업데이트
+        super().wait_before_query(query_type)
 import shutil
 import random
 from datetime import datetime
@@ -24,7 +43,7 @@ create_dir_if_not_exists(SESSION_DIR)
 STAMPS_FILE_IMAGES = Environment.STAMPS_FILE
 STAMPS_FILE_REELS = Environment.CONFIG_DIR / "latest-stamps-reels.ini"
 
-def instaloader_login(username, password, download_path, include_videos=False, include_reels=False, cookiefile=None, resume_prefix=None, rate_limit_config=None):
+def instaloader_login(username, password, download_path, include_videos=False, include_reels=False, cookiefile=None, resume_prefix=None, request_wait_time=0.0):
     """
     Instaloader를 사용해 인스타그램에 로그인합니다.
     
@@ -35,6 +54,7 @@ def instaloader_login(username, password, download_path, include_videos=False, i
         include_videos (bool): 영상 다운로드 여부.
         include_reels (bool): 릴스 다운로드 여부.
         cookiefile (str): Firefox의 cookies.sqlite 파일 경로 (선택적).
+        request_wait_time (float): 요청 간 추가 대기시간 (초).
         
     반환:
         Instaloader 객체 또는 None.
@@ -42,15 +62,8 @@ def instaloader_login(username, password, download_path, include_videos=False, i
     if resume_prefix is None:
         resume_prefix = os.path.join(os.path.dirname(STAMPS_FILE_IMAGES), f"resume_{username}")
     
-    # Rate Limiting 설정 적용
-    if rate_limit_config:
-        min_sleep = rate_limit_config.get('min_sleep', 3.0)
-        max_sleep = rate_limit_config.get('max_sleep', 10.0)
-        multiplier = rate_limit_config.get('multiplier', 1.5)
-    else:
-        min_sleep = 3.0
-        max_sleep = 10.0
-        multiplier = 1.5
+    # 요청 간 대기시간 설정 적용
+    print(f"[REQUEST_WAIT_DEBUG] 요청 간 대기시간 설정: {request_wait_time}초")
         
     L = instaloader.Instaloader(
         download_videos=include_videos or include_reels,
@@ -62,8 +75,9 @@ def instaloader_login(username, password, download_path, include_videos=False, i
         dirname_pattern=download_path,
         max_connection_attempts=3,  # 재시도 횟수를 3회로 제한
         resume_prefix=resume_prefix,
-        rate_controller=lambda context: RateController(context)
+        rate_controller=lambda context: CustomRateController(context, request_wait_time)
     )
+    print(f"[REQUEST_WAIT_DEBUG] CustomRateController 적용됨 - 사용자: {username}, 추가 대기시간: {request_wait_time}초")
     session_file = os.path.join(SESSION_DIR, f"{username}.session")
     
     try:
@@ -460,13 +474,10 @@ def crawl_and_download(search_terms, target, accounts, search_type, include_imag
     
     loaded_loaders = []
     if not accounts:
-        # Rate Limiting 설정 로드
+        # 요청 간 대기시간 설정 로드
         config = load_config()
-        rate_limit_config = {
-            'min_sleep': config.get('RATE_LIMIT_MIN_SLEEP', 3.0),
-            'max_sleep': config.get('RATE_LIMIT_MAX_SLEEP', 10.0),
-            'multiplier': config.get('RATE_LIMIT_MULTIPLIER', 1.5)
-        }
+        request_wait_time = config.get('REQUEST_WAIT_TIME', 0.0)
+        print(f"[REQUEST_WAIT_DEBUG] 익명 크롤링 시작 - 요청 간 대기시간: {request_wait_time}초")
         
         loader = instaloader.Instaloader(
             download_videos=include_videos,
@@ -477,17 +488,15 @@ def crawl_and_download(search_terms, target, accounts, search_type, include_imag
             post_metadata_txt_pattern='',
             dirname_pattern=os.path.join(base_download_path, "unclassified"),
             max_connection_attempts=3,  # 재시도 횟수를 3회로 제한
-            rate_controller=lambda context: RateController(context)
+            rate_controller=lambda context: CustomRateController(context, request_wait_time)
         )
+        print(f"[REQUEST_WAIT_DEBUG] CustomRateController 적용됨 - 익명 사용자, 추가 대기시간: {request_wait_time}초")
         loaded_loaders.append({'loader': loader, 'username': 'anonymous', 'password': None, 'active': True})
     else:
-        # Rate Limiting 설정 로드
+        # 요청 간 대기시간 설정 로드
         config = load_config()
-        rate_limit_config = {
-            'min_sleep': config.get('RATE_LIMIT_MIN_SLEEP', 3.0),
-            'max_sleep': config.get('RATE_LIMIT_MAX_SLEEP', 10.0),
-            'multiplier': config.get('RATE_LIMIT_MULTIPLIER', 1.5)
-        }
+        request_wait_time = config.get('REQUEST_WAIT_TIME', 0.0)
+        print(f"[REQUEST_WAIT_DEBUG] 계정 크롤링 시작 - 요청 간 대기시간: {request_wait_time}초")
         
         for account in accounts:
             loader = instaloader_login(
@@ -497,7 +506,7 @@ def crawl_and_download(search_terms, target, accounts, search_type, include_imag
                 include_videos,
                 include_reels,
                 get_cookiefile(),
-                rate_limit_config=rate_limit_config
+                request_wait_time=request_wait_time
             )
             if loader:
                 loaded_loaders.append({
@@ -514,6 +523,11 @@ def crawl_and_download(search_terms, target, accounts, search_type, include_imag
     
     from ..processing.post_processing import process_images
     
+    # 요청 간 대기시간 설정 로드
+    config = load_config()
+    request_wait_time = config.get('REQUEST_WAIT_TIME', 0.0)
+    last_processed_term = None
+    
     try:
         while account_index < total_accounts:
             loader_dict = loaded_loaders[account_index]
@@ -524,6 +538,12 @@ def crawl_and_download(search_terms, target, accounts, search_type, include_imag
                     if stop_event.is_set():
                         append_status("중지: 다운로드 중지 신호 감지됨.")
                         return
+                    
+                    # 프로필 간 추가 대기시간 적용
+                    if request_wait_time > 0 and last_processed_term is not None:
+                        print(f"[REQUEST_WAIT_DEBUG] 프로필 간 대기 시작: {request_wait_time}초 (이전: {last_processed_term} -> 현재: {term})")
+                        time.sleep(request_wait_time)
+                        print(f"[REQUEST_WAIT_DEBUG] 프로필 간 대기 완료")
                     
                     # 전체 진행률 업데이트
                     if update_overall_progress and total_terms:
@@ -563,6 +583,9 @@ def crawl_and_download(search_terms, target, accounts, search_type, include_imag
                         if stop_event.is_set():
                             append_status("중지: 분류 중지됨.")
                             return
+                    
+                    # 현재 프로필 처리 완료 표시
+                    last_processed_term = term
                 break
             except Exception as e:
                 error_msg = str(e)
@@ -586,7 +609,7 @@ def crawl_and_download(search_terms, target, accounts, search_type, include_imag
                     include_videos,
                     include_reels,
                     get_cookiefile(),
-                    rate_limit_config=rate_limit_config
+                    request_wait_time=request_wait_time
                 )
                 if new_loader:
                     loaded_loaders[account_index]['loader'] = new_loader
