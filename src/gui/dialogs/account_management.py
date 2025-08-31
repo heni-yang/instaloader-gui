@@ -1,4 +1,4 @@
-# crawling/gui_account_management.py
+# src/gui/dialogs/account_management.py
 """
 계정 관리 관련 함수들을 모아놓은 모듈
 기존 gui.py의 UI는 그대로 두고 내부 로직만 분리
@@ -6,7 +6,7 @@
 import os
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
-from crawling.config import load_config, save_config
+from ...utils.config import load_config, save_config
 
 def add_account(accounts_listbox, loaded_accounts, append_status_func):
     """

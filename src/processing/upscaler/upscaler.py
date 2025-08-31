@@ -1,4 +1,4 @@
-# crawling/processing/upscaler.py
+# src/processing/upscaler/upscaler.py
 import os
 import sys
 import numpy as np

@@ -1,4 +1,4 @@
-# crawling/gui_operations.py
+# src/gui/dialogs/settings.py
 """
 GUI의 주요 작업 함수들을 모아놓은 모듈
 기존 gui.py의 UI는 그대로 두고 내부 로직만 분리
@@ -9,7 +9,7 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 from datetime import datetime
 import configparser
-from crawling.config import load_config, save_config
+from ...utils.config import load_config, save_config
 
 def delete_selected_items(hashtag_listbox, user_id_listbox, download_directory_var, append_status_func):
     """

@@ -1,12 +1,12 @@
-# crawling/gui_non_existent_profiles.py
+# src/gui/dialogs/non_existent_profiles.py
 """
 존재하지 않는 프로필 관리 함수들을 모아놓은 모듈
 기존 gui.py의 UI는 그대로 두고 내부 로직만 분리
 """
 import tkinter as tk
 from tkinter import ttk, messagebox
-from crawling.config import load_config, save_config
-from crawling.profile_manager import (
+from ...utils.config import load_config, save_config
+from ...core.profile_manager import (
     get_non_existent_profile_ids, add_non_existent_profile_id, 
     remove_non_existent_profile_id, clear_non_existent_profile_ids,
     get_username_by_profile_id, load_profile_ids_from_stamps

@@ -1,12 +1,12 @@
-# crawling/post_processing.py
+# src/processing/post_processing.py
 import os
 import subprocess
-from crawling.utils import logging
+from ..utils.file_utils import logging
 
 # 분류 스크립트 파일명 및 모듈 이름
 CLASSIFY_SCRIPT_NAME = 'classify_yolo.py'
 CLASSIFY_SCRIPT_REL_PATH = os.path.join('processing', CLASSIFY_SCRIPT_NAME)
-CLASSIFY_MODULE_NAME = "crawling.processing." + os.path.splitext(CLASSIFY_SCRIPT_NAME)[0]
+CLASSIFY_MODULE_NAME = "src.processing.yolo." + os.path.splitext(CLASSIFY_SCRIPT_NAME)[0]
 
 face_upscale = 2
 overall_scale = 2
@@ -15,7 +15,7 @@ def run_upscaling(python_executable, input_image_dir, face_upscale, overall_scal
     """
     업스케일링 스크립트를 모듈 형식으로 호출합니다 (upscaler.py).
     """
-    module_name = "crawling.processing.upscaler"
+    module_name = "src.processing.upscaler.upscaler"
     cmd = [
         python_executable,
         "-m",

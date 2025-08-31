@@ -1,4 +1,4 @@
-# crawling/downloader.py
+# src/core/downloader.py
 import os
 import instaloader
 from instaloader import Profile, LatestStamps, RateController, exceptions
@@ -7,21 +7,22 @@ import time
 import shutil
 import random
 from datetime import datetime
-from crawling.utils import create_dir_if_not_exists, logging
-from crawling.config import load_config, save_config
-from crawling.profile_manager import add_non_existent_profile_id, is_profile_id_non_existent, get_profile_id_for_username
+from ..utils.file_utils import create_dir_if_not_exists, logging
+from ..utils.config import load_config, save_config
+from .profile_manager import add_non_existent_profile_id, is_profile_id_non_existent, get_profile_id_for_username
 from sqlite3 import OperationalError, connect
 from platform import system
 from glob import glob
 from os.path import expanduser
+from ..utils.environment import Environment
 
 # 세션 파일 저장 디렉토리 설정
-SESSION_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'sessions')
+SESSION_DIR = Environment.SESSIONS_DIR
 create_dir_if_not_exists(SESSION_DIR)
 
 # 최신 스탬프 파일 경로
-STAMPS_FILE_IMAGES = os.path.join(os.path.dirname(os.path.abspath(__file__)), "latest-stamps-images.ini")
-STAMPS_FILE_REELS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "latest-stamps-reels.ini")
+STAMPS_FILE_IMAGES = Environment.STAMPS_FILE
+STAMPS_FILE_REELS = Environment.CONFIG_DIR / "latest-stamps-reels.ini"
 
 def instaloader_login(username, password, download_path, include_videos=False, include_reels=False, cookiefile=None, resume_prefix=None, rate_limit_config=None):
     """

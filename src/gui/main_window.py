@@ -1,4 +1,4 @@
-# crawling/gui.py
+# src/gui/main_window.py
 import os
 import threading
 import tkinter as tk
@@ -10,27 +10,27 @@ import subprocess
 import shutil
 import time
 
-from crawling.config import load_config, save_config
-from crawling.downloader import crawl_and_download
-from crawling.post_processing import process_images
-from crawling.utils import create_dir_if_not_exists
-from crawling.profile_manager import get_non_existent_profile_ids, get_profile_id_for_username, is_profile_id_non_existent
+from ..utils.config import load_config, save_config
+from ..core.downloader import crawl_and_download
+from ..processing.post_processing import process_images
+from ..utils.file_utils import create_dir_if_not_exists
+from ..core.profile_manager import get_non_existent_profile_ids, get_profile_id_for_username, is_profile_id_non_existent
 
 # 모듈화된 GUI 함수들 import
-from crawling.gui_handlers import (
+from .handlers.queue_handler import (
     add_items_from_listbox, add_all_items_from_listbox,
     toggle_upscale_hashtag, toggle_upscale_user, toggle_human_classify,
     on_search_type_change, open_download_directory, select_download_directory_main,
     select_download_directory_add, process_queue
 )
-from crawling.gui_operations import (
+from .dialogs.settings import (
     delete_selected_items, load_existing_directories,
     sort_user_ids_by_creation_desc, sort_user_ids_by_creation_asc, sort_user_ids_by_modified_asc
 )
-from crawling.gui_account_management import (
+from .dialogs.account_management import (
     add_account, remove_account, remove_session, save_new_account
 )
-from crawling.gui_non_existent_profiles import manage_non_existent_profiles
+from .dialogs.non_existent_profiles import manage_non_existent_profiles
 
 # 프로젝트 루트 및 기본 다운로드 경로 설정
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
@@ -450,7 +450,7 @@ def main_gui():
                         search_terms.remove(term_to_remove)
                 
                 config['SEARCH_TERMS'] = search_terms
-            save_config(config)
+                save_config(config)
                 
                 removed_count = len(config_update_pending)
                 config_update_pending.clear()

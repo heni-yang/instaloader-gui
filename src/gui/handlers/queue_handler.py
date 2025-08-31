@@ -1,4 +1,4 @@
-# crawling/gui_handlers.py
+# src/gui/handlers/queue_handler.py
 """
 GUI 이벤트 핸들러 함수들을 모아놓은 모듈
 기존 gui.py의 UI는 그대로 두고 내부 로직만 분리
@@ -6,7 +6,7 @@ GUI 이벤트 핸들러 함수들을 모아놓은 모듈
 import os
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
-from crawling.config import load_config, save_config
+from ...utils.config import load_config, save_config
 
 def add_items_from_listbox(listbox, text_widget, item_label, append_status_func):
     """

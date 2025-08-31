@@ -1,4 +1,4 @@
-# crawling/processing/classify_yolo.py
+# src/processing/yolo/classify_yolo.py
 """
 독립 실행형 YOLO 이미지 분류 스크립트.
 타겟 디렉토리의 이미지를 YOLO 세그멘테이션 및 포즈 모델로 처리하여
@@ -24,7 +24,7 @@ import torch
 from PIL import Image
 from shapely.geometry import Polygon, box as shapely_box
 from ultralytics import YOLO
-from crawling.utils import convert_webp_to_jpg, collect_image_paths, load_images_concurrently, logging
+from ...utils.file_utils import convert_webp_to_jpg, collect_image_paths, load_images_concurrently, logging
 
 # CUDA 사용 시 GPU 메모리 사용을 60%로 제한
 # if torch.cuda.is_available():
