@@ -59,11 +59,13 @@ def instaloader_login(username, password, download_path, include_videos=False, i
     반환:
         Instaloader 객체 또는 None.
     """
+    # Resume prefix 설정 - 기본적으로 이어받기 활성화 (프로필별로 나중에 설정)
     if resume_prefix is None:
-        resume_prefix = os.path.join(os.path.dirname(STAMPS_FILE_IMAGES), f"resume_{username}")
+        resume_prefix = "resume_default"  # 기본값, 프로필별로 덮어씀
     
     # 요청 간 대기시간 설정 적용
     print(f"[REQUEST_WAIT_DEBUG] 요청 간 대기시간 설정: {request_wait_time}초")
+    print(f"[RESUME DEBUG] 기본 Resume prefix 설정: {resume_prefix}")
         
     L = instaloader.Instaloader(
         download_videos=include_videos or include_reels,
@@ -74,7 +76,7 @@ def instaloader_login(username, password, download_path, include_videos=False, i
         post_metadata_txt_pattern='',
         dirname_pattern=download_path,
         max_connection_attempts=3,  # 재시도 횟수를 3회로 제한
-        resume_prefix=resume_prefix,
+        resume_prefix=resume_prefix,  # 기본 이어받기 활성화 (프로필별로 덮어씀)
         rate_controller=lambda context: CustomRateController(context, request_wait_time)
     )
     print(f"[REQUEST_WAIT_DEBUG] CustomRateController 적용됨 - 사용자: {username}, 추가 대기시간: {request_wait_time}초")
@@ -182,6 +184,19 @@ def download_posts(
 
         original_dirname = L.dirname_pattern
         L.dirname_pattern = target_folder
+        
+        # 해시태그별 resume prefix 설정
+        hashtag_resume_prefix = f"resume_hashtag_{search_term}"
+        L.resume_prefix = hashtag_resume_prefix
+        print(f"📌 [RESUME HASHTAG] 해시태그: {search_term}, resume_prefix: {hashtag_resume_prefix}")
+        
+        # 해시태그 resume 파일 확인
+        import glob as glob_module
+        hashtag_resume_files = glob_module.glob(f"{hashtag_resume_prefix}_*.json.xz")
+        if hashtag_resume_files:
+            print(f"📌 [RESUME HASHTAG] 기존 resume 파일 발견: {hashtag_resume_files[0]}")
+        else:
+            print(f"📌 [RESUME HASHTAG] 기존 resume 파일 없음 - 새로 시작")
 
         try:
             if include_images or include_videos:
@@ -219,7 +234,7 @@ def download_posts(
         L.dirname_pattern = original_dirname
         progress_queue.put(("term_progress", search_term, 1, username))
         print(f"{search_term} 다운로드 완료")
-        progress_queue.put(("term_complete", search_term, username))
+        # term_complete는 crawl_and_download에서 처리하므로 여기서는 전송하지 않음
     except instaloader.exceptions.LoginRequiredException as e:
         print(f"로그인 필요 오류: {e}")
         progress_queue.put(("term_error", search_term, "로그인 필요", username))
@@ -273,6 +288,7 @@ def user_download_with_profiles(L, search_user, target, include_images, include_
     """
     def download_content():
         nonlocal search_user, base_path
+        resume_prefix = None  # resume_prefix 변수를 함수 스코프에서 접근 가능하도록 선언
         try:
             def my_post_filter(post):
                 if include_images and include_reels:
@@ -364,13 +380,9 @@ def user_download_with_profiles(L, search_user, target, include_images, include_
             L_content.dirname_pattern = content_folder
             create_dir_if_not_exists(content_folder)             
 
-            resume_prefix = f"resume_{profile.username}"
-            print("📌 [RESUME INFO]")
-            print(f" - resume_prefix: {resume_prefix}")
-            print(f" - dirname_pattern: {L_content.dirname_pattern}")
-            print(f" - 예상 저장 위치: {os.path.join(L_content.dirname_pattern, f'{os.path.basename(resume_prefix)}_<magic>.json.xz')}")
-
-            L_content.resume_prefix = resume_prefix 
+            # Resume prefix를 프로필 중심으로 설정 (로그인 계정과 무관)
+            profile_resume_prefix = f"resume_profile_{profile.username}"
+            L_content.resume_prefix = profile_resume_prefix 
 
             if latest_stamps_images.get_profile_id(profile.username) is None:
                 latest_stamps_images.save_profile_id(profile.username, profile.userid)
@@ -391,10 +403,14 @@ def user_download_with_profiles(L, search_user, target, include_images, include_
                 'max_count': target if target != 0 else None,
             }
 
+            # 다운로드 실행
+            if stop_event.is_set():
+                return
             L_content.download_profiles(**image_kwargs)
+            
             # username이 변경된 경우 old_username을 전달하여 검색목록에서 제거
             completed_username = old_username if old_username != profile.username else profile.username
-            progress_queue.put(("term_complete", completed_username, "콘텐츠 다운로드 완료", L.context.username))
+            # term_complete는 crawl_and_download에서 처리하므로 여기서는 전송하지 않음
 
             if include_reels:
                 reels_folder = os.path.join(base_path, 'Reels', 'ID', profile.username)
@@ -417,6 +433,8 @@ def user_download_with_profiles(L, search_user, target, include_images, include_
         except Exception as e:
             error_msg = str(e)
             print(f"{search_user} 다운로드 오류: {error_msg}")
+            
+
             
             # "Private but not followed" 오류 감지 및 저장
             if "Private but not followed" in error_msg:
@@ -488,6 +506,7 @@ def crawl_and_download(search_terms, target, accounts, search_type, include_imag
             post_metadata_txt_pattern='',
             dirname_pattern=os.path.join(base_download_path, "unclassified"),
             max_connection_attempts=3,  # 재시도 횟수를 3회로 제한
+            resume_prefix="resume_anonymous",  # 익명 사용자용 이어받기 활성화 (해시태그 기반)
             rate_controller=lambda context: CustomRateController(context, request_wait_time)
         )
         print(f"[REQUEST_WAIT_DEBUG] CustomRateController 적용됨 - 익명 사용자, 추가 대기시간: {request_wait_time}초")
@@ -562,10 +581,10 @@ def crawl_and_download(search_terms, target, accounts, search_type, include_imag
                     else:
                         user_download_with_profiles(L, term, target, include_images, include_reels,
                                                     progress_queue, stop_event, allow_duplicate, base_download_path, search_type)
-                    if stop_event.is_set():
-                        append_status("중지: 다운로드 중지됨.")
-                        return
+                    
+                    # 다운로드 완료 후 처리
                     if include_human_classify and not stop_event.is_set():
+                        # 인물 분류가 체크되어 있으면 분류 진행
                         classify_dir = os.path.join(base_download_path, 'unclassified',
                                                     'hashtag' if search_type == 'hashtag' else 'ID',
                                                     term)
@@ -576,13 +595,25 @@ def crawl_and_download(search_terms, target, accounts, search_type, include_imag
                             if image_files:
                                 print(f"인물분류 시작: {term}")
                                 process_images(root, append_status, download_directory_var, term, current_username, search_type, stop_event, include_upscale, classified=False)
+                                # 분류 완료 후 검색 목록에서 삭제
+                                progress_queue.put(("term_classify_complete", term, "다운로드 및 분류 완료", L.context.username))
                             else:
                                 print(f"인물분류 스킵: {term} - 이미지 파일 없음")
+                                # 이미지 파일이 없으면 다운로드 완료 후 검색 목록에서 삭제
+                                progress_queue.put(("term_complete", term, "다운로드 완료 (분류 스킵)", L.context.username))
                         else:
                             print(f"인물분류 스킵: {term} - 디렉토리 없음")
+                            # 디렉토리가 없으면 다운로드 완료 후 검색 목록에서 삭제
+                            progress_queue.put(("term_complete", term, "다운로드 완료 (분류 스킵)", L.context.username))
                         if stop_event.is_set():
                             append_status("중지: 분류 중지됨.")
                             return
+                    else:
+                        # 인물 분류가 체크되어 있지 않으면 다운로드 완료 후 즉시 검색 목록에서 삭제
+                        progress_queue.put(("term_complete", term, "다운로드 완료", L.context.username))
+                    if stop_event.is_set():
+                        append_status("중지: 다운로드 중지됨.")
+                        return
                     
                     # 현재 프로필 처리 완료 표시
                     last_processed_term = term

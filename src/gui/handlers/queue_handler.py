@@ -157,6 +157,7 @@ def process_queue(q, append_status_func, word_text=None, config_update_pending=N
                 append_status_func(f"시작: {msg[1]} (계정: {msg[2]})")
             elif msg[0] == "term_progress":
                 append_status_func(f"진행: {msg[1]} - {msg[2]} (계정: {msg[3]})")
+
             elif msg[0] == "term_complete":
                 append_status_func(f"완료: {msg[1]} (계정: {msg[2]})")
                 # 다운로드 완료 후 검색목록에서 해당 항목 삭제
@@ -173,6 +174,28 @@ def process_queue(q, append_status_func, word_text=None, config_update_pending=N
                                 word_text.insert("1.0", '\n'.join(filtered_lines))
                             
                             append_status_func(f"검색목록에서 '{msg[1]}' 제거됨")
+                            
+                            # 설정 파일 업데이트 요청 추가 (배치 처리용)
+                            if config_update_pending is not None:
+                                config_update_pending.add(msg[1])
+                    except Exception as e:
+                        append_status_func(f"검색목록 업데이트 오류: {e}")
+            elif msg[0] == "term_classify_complete":
+                append_status_func(f"완료: {msg[1]} - {msg[2]} (계정: {msg[3]})")
+                # 분류 완료 후 검색목록에서 해당 항목 삭제
+                if word_text:
+                    try:
+                        current_text = word_text.get("1.0", tk.END).strip()
+                        if current_text:
+                            lines = current_text.split('\n')
+                            # 완료된 검색어를 제거
+                            filtered_lines = [line.strip() for line in lines if line.strip() and line.strip() != msg[1]]
+                            # 새로운 텍스트로 업데이트
+                            word_text.delete("1.0", tk.END)
+                            if filtered_lines:
+                                word_text.insert("1.0", '\n'.join(filtered_lines))
+                            
+                            append_status_func(f"검색목록에서 '{msg[1]}' 제거됨 (분류 완료)")
                             
                             # 설정 파일 업데이트 요청 추가 (배치 처리용)
                             if config_update_pending is not None:
