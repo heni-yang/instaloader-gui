@@ -4,15 +4,33 @@ import threading
 import tkinter as tk
 from tkinter import ttk, scrolledtext, filedialog, messagebox
 from queue import Queue, Empty
-from datetime import datetime
+from datetime import datetime, timedelta
 import configparser
 import subprocess
 import shutil
+import time
 
 from crawling.config import load_config, save_config
 from crawling.downloader import crawl_and_download
 from crawling.post_processing import process_images
 from crawling.utils import create_dir_if_not_exists
+from crawling.profile_manager import get_non_existent_profile_ids, get_profile_id_for_username, is_profile_id_non_existent
+
+# 모듈화된 GUI 함수들 import
+from crawling.gui_handlers import (
+    add_items_from_listbox, add_all_items_from_listbox,
+    toggle_upscale_hashtag, toggle_upscale_user, toggle_human_classify,
+    on_search_type_change, open_download_directory, select_download_directory_main,
+    select_download_directory_add, process_queue
+)
+from crawling.gui_operations import (
+    delete_selected_items, load_existing_directories,
+    sort_user_ids_by_creation_desc, sort_user_ids_by_creation_asc, sort_user_ids_by_modified_asc
+)
+from crawling.gui_account_management import (
+    add_account, remove_account, remove_session, save_new_account
+)
+from crawling.gui_non_existent_profiles import manage_non_existent_profiles
 
 # 프로젝트 루트 및 기본 다운로드 경로 설정
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
@@ -89,151 +107,28 @@ def main_gui():
             status_text.configure(state='disabled')
         root.after(0, append)
 
-    # 리스트박스 항목을 텍스트 위젯에 추가하는 함수들
-    def add_items_from_listbox(listbox, text_widget, item_label):
-        indices = listbox.curselection()
-        items = [listbox.get(i) for i in indices]
-        if not items:
-            append_status(f"정보: 추가할 {item_label}를 선택하세요.")
-            return
-        current_text = text_widget.get("1.0", tk.END).strip()
-        new_text = "\n".join(items)
-        updated_text = current_text + "\n" + new_text if current_text else new_text
-        text_widget.delete("1.0", tk.END)
-        text_widget.insert(tk.END, updated_text)
-        append_status(f"성공: {len(items)}개의 {item_label} 추가됨.")
+    # 리스트박스 항목을 텍스트 위젯에 추가하는 함수들 (모듈에서 호출)
+    def add_items_from_listbox_wrapper(listbox, text_widget, item_label):
+        add_items_from_listbox(listbox, text_widget, item_label, append_status)
 
-    def add_all_items_from_listbox(listbox, text_widget, item_label):
-        items = listbox.get(0, tk.END)
-        if not items:
-            append_status(f"정보: 추가할 {item_label}가 없습니다.")
-            return
-        current_text = text_widget.get("1.0", tk.END).strip()
-        new_text = "\n".join(items)
-        updated_text = current_text + "\n" + new_text if current_text else new_text
-        text_widget.delete("1.0", tk.END)
-        text_widget.insert(tk.END, updated_text)
-        append_status(f"성공: 모든 {item_label} 추가됨.")
+    def add_all_items_from_listbox_wrapper(listbox, text_widget, item_label):
+        add_all_items_from_listbox(listbox, text_widget, item_label, append_status)
 
-    # 계정 추가/삭제/세션 삭제 함수 (세부 로직 동일)
-    def add_account():
-        add_window = tk.Toplevel(root)
-        add_window.title("계정 추가")
-        add_window.geometry("430x250")
-        add_window.resizable(False, False)
-        ttk.Label(add_window, text="히스토리:").grid(row=0, column=0, sticky='w', pady=(10,2), padx=10)
-        history_var = tk.StringVar()
-        history_values = [item['username'] for item in config.get('LOGIN_HISTORY', [])]
-        history_combo = ttk.Combobox(add_window, textvariable=history_var, values=history_values, state='readonly', width=35)
-        history_combo.grid(row=0, column=1, pady=(10,2), padx=10)
-        def on_history_select(event):
-            selected_username = history_var.get()
-            for item in config.get('LOGIN_HISTORY', []):
-                if item['username'] == selected_username:
-                    new_username_entry.delete(0, tk.END)
-                    new_username_entry.insert(0, item['username'])
-                    new_password_entry.delete(0, tk.END)
-                    new_password_entry.insert(0, item['password'])
-                    download_directory_var_add.set(item['download_path'])
-                    break
-        history_combo.bind("<<ComboboxSelected>>", on_history_select)
-        def delete_history():
-            selected = history_var.get()
-            if not selected:
-                append_status("히스토리에서 삭제할 계정을 선택하세요.")
-                return
-            new_history = [item for item in config.get('LOGIN_HISTORY', []) if item['username'] != selected]
-            config['LOGIN_HISTORY'] = new_history
-            save_config(config)
-            append_status(f"히스토리에서 {selected} 삭제됨.")
-            history_combo['values'] = [item['username'] for item in new_history]
-            history_var.set("")
-        ttk.Button(add_window, text="히스토리 삭제", command=delete_history).grid(row=1, column=1, sticky='e', padx=10, pady=(0,10))
-        ttk.Label(add_window, text="아이디:").grid(row=2, column=0, sticky='w', pady=(10,2), padx=10)
-        new_username_entry = ttk.Entry(add_window, width=40, font=('Arial', 10))
-        new_username_entry.grid(row=2, column=1, pady=(10,10), padx=10)
-        ttk.Label(add_window, text="비밀번호:").grid(row=3, column=0, sticky='w', pady=(5,2), padx=10)
-        new_password_entry = ttk.Entry(add_window, show="*", width=40, font=('Arial', 10))
-        new_password_entry.grid(row=3, column=1, pady=(5,10), padx=10)
-        ttk.Label(add_window, text="다운로드 경로:").grid(row=4, column=0, sticky='w', pady=(5,2), padx=10)
-        download_dir_frame = ttk.Frame(add_window)
-        download_dir_frame.grid(row=4, column=1, pady=(5,10), padx=10, sticky='ew')
-        download_directory_var_add = tk.StringVar(value=last_download_path)
-        download_dir_entry = ttk.Entry(download_dir_frame, textvariable=download_directory_var_add, width=30, font=('Arial', 10))
-        download_dir_entry.pack(side='left', padx=(0,5), fill='x', expand=True)
-        def select_download_directory_add():
-            directory = filedialog.askdirectory(initialdir=last_download_path)
-            if directory:
-                download_directory_var_add.set(directory)
-        ttk.Button(download_dir_frame, text="경로 선택", command=select_download_directory_add, width=10).pack(side='left')
-        def save_new_account():
-            username = new_username_entry.get().strip()
-            password = new_password_entry.get().strip()
-            download_path = download_directory_var_add.get().strip()
-            if not username or not password:
-                append_status("오류: 아이디와 비밀번호를 입력하세요.")
-                return
-            accounts_listbox.insert(tk.END, username)
-            loaded_accounts.append({
-                'INSTAGRAM_USERNAME': username,
-                'INSTAGRAM_PASSWORD': password,
-                'DOWNLOAD_PATH': download_path
-            })
-            config['ACCOUNTS'] = loaded_accounts
-            found = False
-            for item in config.get('LOGIN_HISTORY', []):
-                if item['username'] == username:
-                    item['password'] = password
-                    item['download_path'] = download_path
-                    found = True
-                    break
-            if not found:
-                config.setdefault('LOGIN_HISTORY', []).append({
-                    'username': username,
-                    'password': password,
-                    'download_path': download_path
-                })
-            # 마지막 다운로드 경로 업데이트
-            config['LAST_DOWNLOAD_PATH'] = download_path
-            save_config(config)
-            append_status(f"새로운 계정 {username} 추가됨.")
-            add_window.destroy()
-            load_existing_directories()
-        ttk.Button(add_window, text="추가", command=save_new_account).grid(row=5, column=0, columnspan=2, pady=10)
+    # 계정 관리 함수들 (모듈에서 호출)
+    def add_account_wrapper():
+        add_account(accounts_listbox, loaded_accounts, append_status)
 
-    def remove_account():
-        indices = accounts_listbox.curselection()
-        if not indices:
-            append_status("오류: 제거할 계정을 선택하세요.")
-            return
-        for index in reversed(indices):
-            username = accounts_listbox.get(index)
-            accounts_listbox.delete(index)
-            loaded_accounts[:] = [acc for acc in loaded_accounts if acc['INSTAGRAM_USERNAME'] != username]
-            config['ACCOUNTS'] = loaded_accounts
-            save_config(config)
-            append_status(f"계정 {username} 제거됨.")
-        load_existing_directories()
+    def remove_account_wrapper():
+        remove_account(accounts_listbox, loaded_accounts, append_status)
 
-    def remove_session():
-        selected_indices = accounts_listbox.curselection()
-        if not selected_indices:
-            append_status("오류: 세션 삭제할 계정 선택하세요.")
-            return
-        for index in reversed(selected_indices):
-            username = accounts_listbox.get(index)
-            session_file = os.path.join(SESSION_DIR, f"{username}.session")
-            if os.path.isfile(session_file):
-                os.remove(session_file)
-                append_status(f"{username} 계정 세션 파일 삭제됨.")
-            else:
-                append_status(f"{username} 계정 세션 파일 없음.")
+    def remove_session_wrapper():
+        remove_session(append_status)
 
-    add_account_button = ttk.Button(account_buttons_frame, text="계정 추가", command=add_account, width=8)
+    add_account_button = ttk.Button(account_buttons_frame, text="계정 추가", command=add_account_wrapper, width=8)
     add_account_button.grid(row=0, column=0, padx=5, pady=2, sticky='ew')
-    remove_account_button = ttk.Button(account_buttons_frame, text="계정 제거", command=remove_account, width=8)
+    remove_account_button = ttk.Button(account_buttons_frame, text="계정 제거", command=remove_account_wrapper, width=8)
     remove_account_button.grid(row=0, column=1, padx=5, pady=2, sticky='ew')
-    remove_session_button = ttk.Button(account_buttons_frame, text="세션 삭제", command=remove_session, width=8)
+    remove_session_button = ttk.Button(account_buttons_frame, text="세션 삭제", command=remove_session_wrapper, width=8)
     remove_session_button.grid(row=0, column=2, padx=5, pady=2, sticky='ew')
 
     # 검색 유형 및 옵션 영역
@@ -272,13 +167,10 @@ def main_gui():
     upscale_checkbox_hashtag.configure(state='disabled')
 
     # 인물 분류 체크박스 값에 따라 업스케일링 체크박스 활성/비활성 제어
-    def toggle_upscale_hashtag(*args):
-        if include_human_classify_var_hashtag.get():
-            upscale_checkbox_hashtag.configure(state='normal')
-        else:
-            upscale_var_hashtag.set(False)
-            upscale_checkbox_hashtag.configure(state='disabled')
-    include_human_classify_var_hashtag.trace_add('write', toggle_upscale_hashtag)
+    # toggle 함수들을 모듈에서 호출
+    def toggle_upscale_hashtag_wrapper(*args):
+        toggle_upscale_hashtag(include_human_classify_var_hashtag, upscale_var_hashtag, upscale_checkbox_hashtag, *args)
+    include_human_classify_var_hashtag.trace_add('write', toggle_upscale_hashtag_wrapper)
 
 
     # 사용자 ID 검색 영역 (수정된 부분)
@@ -311,18 +203,14 @@ def main_gui():
         lambda *args: toggle_human_classify(user_id_frame, include_images_var_user, include_human_classify_var_user)
 )
     # 인물 분류 체크박스 값에 따라 업스케일링 체크박스 활성/비활성 제어
-    def toggle_upscale_user(*args):
-        if include_human_classify_var_user.get():
-            upscale_checkbox_user.configure(state='normal')
-        else:
-            upscale_var_user.set(False)
-            upscale_checkbox_user.configure(state='disabled')
-    include_human_classify_var_user.trace_add('write', toggle_upscale_user)
+    def toggle_upscale_user_wrapper(*args):
+        toggle_upscale_user(include_human_classify_var_user, upscale_var_user, upscale_checkbox_user, *args)
+    include_human_classify_var_user.trace_add('write', toggle_upscale_user_wrapper)
 
 
     allow_duplicate_var = tk.BooleanVar(value=False)
     ttk.Checkbutton(search_type_frame, text="중복 다운로드 허용", variable=allow_duplicate_var).grid(row=3, column=0, columnspan=2, sticky='w', padx=5, pady=5)
-    
+
     # Rate Limiting 설정
     rate_limit_frame = ttk.LabelFrame(search_type_frame, text="속도 제한 설정", padding=5)
     rate_limit_frame.grid(row=4, column=0, columnspan=2, sticky='ew', padx=5, pady=5)
@@ -337,41 +225,20 @@ def main_gui():
     max_wait_time_entry = ttk.Entry(rate_limit_frame, textvariable=max_wait_time_var, width=10)
     max_wait_time_entry.grid(row=1, column=1, sticky='w', padx=5, pady=2)
 
-    def toggle_human_classify(parent_frame, img_var, human_var):
-        if img_var.get():
-            if parent_frame == hashtag_frame:
-                include_human_classify_check_hashtag.configure(state='normal')
-            else:
-                include_human_classify_check_user.configure(state='normal')
-        else:
-            human_var.set(False)
-            if parent_frame == hashtag_frame:
-                include_human_classify_check_hashtag.configure(state='disabled')
-            else:
-                include_human_classify_check_user.configure(state='disabled')
+    # toggle 함수들을 모듈에서 호출
+    def toggle_human_classify_wrapper(parent_frame, img_var, human_var):
+        toggle_human_classify(parent_frame, img_var, human_var, include_human_classify_check_hashtag, include_human_classify_check_user)
                 
     include_images_var_hashtag.trace_add('write',
-        lambda *args: toggle_human_classify(hashtag_frame, include_images_var_hashtag, include_human_classify_var_hashtag)
+        lambda *args: toggle_human_classify_wrapper(hashtag_frame, include_images_var_hashtag, include_human_classify_var_hashtag)
 )                              
-    def on_search_type_change(*args):
-        stype = search_type_var.get()
-        if stype == "hashtag":
-            include_images_check_hashtag.configure(state='normal')
-            include_videos_check_hashtag.configure(state='normal')
-            toggle_human_classify(hashtag_frame, include_images_var_hashtag, include_human_classify_var_hashtag)
-            include_images_check_user.configure(state='disabled')
-            include_reels_check_user.configure(state='disabled')
-            include_human_classify_var_user.set(False)
-            include_human_classify_check_user.configure(state='disabled')
-        else:
-            include_images_check_user.configure(state='normal')
-            include_reels_check_user.configure(state='normal')
-            toggle_human_classify(user_id_frame, include_images_var_user, include_human_classify_var_user)
-            include_images_check_hashtag.configure(state='disabled')
-            include_videos_check_hashtag.configure(state='disabled')
-            include_human_classify_var_hashtag.set(False)
-            include_human_classify_check_hashtag.configure(state='disabled')
-    search_type_var.trace_add('write', on_search_type_change)
+    def on_search_type_change_wrapper(*args):
+        on_search_type_change(search_type_var, include_images_check_hashtag, include_videos_check_hashtag,
+                              include_human_classify_check_hashtag, include_images_var_hashtag, include_human_classify_var_hashtag,
+                              include_images_check_user, include_reels_check_user, include_human_classify_check_user,
+                              include_images_var_user, include_human_classify_var_user, hashtag_frame, user_id_frame,
+                              append_status, *args)
+    search_type_var.trace_add('write', on_search_type_change_wrapper)
 
     search_frame = ttk.LabelFrame(root, text="검색 설정", padding=5)
     search_frame.grid(row=2, column=0, padx=10, pady=5, sticky='ew')
@@ -392,35 +259,16 @@ def main_gui():
     download_dir_entry = ttk.Entry(download_dir_frame, textvariable=download_directory_var, width=50, font=('Arial', 10))
     download_dir_entry.grid(row=0, column=1, sticky='ew', padx=10, pady=5)
     
-    def open_download_directory():
-        """
-        '폴더 열기' 버튼 클릭 시, 다운로드 경로가 없으면 생성 후 엽니다.
-        """
-        d = download_directory_var.get()
-        if not os.path.isdir(d):
-            # 디렉토리가 없으면 생성
-            create_dir_if_not_exists(d)
-            append_status(f"다운로드 경로 생성됨: {d}")
-        if os.name == 'nt':
-            os.startfile(d)
-        else:
-            subprocess.Popen(["open", d])
+    # 다운로드 디렉토리 관련 함수들을 모듈에서 호출
+    def open_download_directory_wrapper():
+        open_download_directory(download_directory_var, append_status)
 
-    def select_download_directory_main():
-        d = filedialog.askdirectory(initialdir=last_download_path)
-        if d:
-            download_directory_var.set(d)
-            load_existing_directories()
-            for acc in loaded_accounts:
-                acc['DOWNLOAD_PATH'] = d
-            # 마지막 다운로드 경로 업데이트
-            config['LAST_DOWNLOAD_PATH'] = d
-            save_config(config)
-            append_status("다운로드 경로 변경됨.")
-            print("다운로드 경로 업데이트됨.")
+    def select_download_directory_main_wrapper():
+        select_download_directory_main(download_directory_var, last_download_path, loaded_accounts,
+                                      load_existing_directories, append_status)
 
-    ttk.Button(download_dir_frame, text="경로 선택", command=select_download_directory_main, width=12).grid(row=0, column=2, padx=5, pady=5)
-    ttk.Button(download_dir_frame, text="폴더 열기", command=open_download_directory, width=12).grid(row=0, column=3, padx=5, pady=5)
+    ttk.Button(download_dir_frame, text="경로 선택", command=select_download_directory_main_wrapper, width=12).grid(row=0, column=2, padx=5, pady=5)
+    ttk.Button(download_dir_frame, text="폴더 열기", command=open_download_directory_wrapper, width=12).grid(row=0, column=3, padx=5, pady=5)
 
     existing_dirs_frame = ttk.LabelFrame(root, text="기존 다운로드 디렉토리", padding=5)
     existing_dirs_frame.grid(row=4, column=0, padx=10, pady=10, sticky='nsew')
@@ -461,360 +309,163 @@ def main_gui():
     ttk.Button(selection_buttons_frame, text="모든 사용자 ID 추가",
                command=lambda: add_all_items_from_listbox(user_id_listbox, word_text, "사용자 ID")
     ).grid(row=1, column=1, padx=5, pady=2, sticky='ew')
-    
-    # 삭제 버튼 추가
-    ttk.Button(selection_buttons_frame, text="선택된 대상 삭제",
-               command=lambda: delete_selected_items(), width=15
-    ).grid(row=2, column=0, columnspan=2, padx=5, pady=2, sticky='ew')
 
     user_ids_cached = []
 
-    def delete_selected_items():
-        """
-        선택된 해시태그와 사용자 ID와 관련된 모든 디렉토리를 삭제합니다.
-        """
-        # 해시태그 선택 확인
-        hashtag_indices = hashtag_listbox.curselection()
-        user_id_indices = user_id_listbox.curselection()
-        
-        if not hashtag_indices and not user_id_indices:
-            append_status("오류: 삭제할 대상을 선택하세요.")
-            return
-        
-        selected_hashtags = [hashtag_listbox.get(i) for i in hashtag_indices]
-        selected_user_ids = [user_id_listbox.get(i) for i in user_id_indices]
-        
-        # 확인 대화상자 메시지 구성
-        confirm_parts = []
-        if selected_hashtags:
-            confirm_parts.append(f"해시태그:\n" + "\n".join(selected_hashtags))
-        if selected_user_ids:
-            confirm_parts.append(f"사용자 ID:\n" + "\n".join(selected_user_ids))
-        
-        confirm_message = f"선택된 대상과 관련된 모든 디렉토리를 삭제하시겠습니까?\n\n" + "\n\n".join(confirm_parts)
-        result = messagebox.askyesno("삭제 확인", confirm_message)
-        
-        if not result:
-            append_status("삭제가 취소되었습니다.")
-            return
-        
-        main_download_dir = download_directory_var.get()
-        deleted_count = 0
-        
-        # 해시태그 삭제
-        if selected_hashtags:
-            sorted_hashtag_indices = sorted(hashtag_indices, reverse=True)
-            for hashtag in selected_hashtags:
-                try:
-                    # 해시태그 관련 디렉토리들 삭제
-                    dirs_to_delete = [
-                        os.path.join(main_download_dir, "unclassified", "hashtag", hashtag),
-                        os.path.join(main_download_dir, "Reels", "hashtag", hashtag),
-                        os.path.join(main_download_dir, "인물", f"hashtag_{hashtag}"),
-                        os.path.join(main_download_dir, "비인물", f"hashtag_{hashtag}")
-                    ]
-                    
-                    for dir_path in dirs_to_delete:
-                        if os.path.exists(dir_path):
-                            shutil.rmtree(dir_path)
-                            append_status(f"삭제됨: {dir_path}")
-                            deleted_count += 1
-                    
-                except Exception as e:
-                    append_status(f"오류: {hashtag} 삭제 중 오류 발생 - {e}")
-            
-            # 해시태그 리스트박스에서 선택된 항목들 제거 (역순으로)
-            for index in sorted_hashtag_indices:
-                hashtag_listbox.delete(index)
-        
-        # 사용자 ID 삭제
-        if selected_user_ids:
-            sorted_user_id_indices = sorted(user_id_indices, reverse=True)
-            for user_id in selected_user_ids:
-                try:
-                    # 사용자 ID 관련 디렉토리들 삭제
-                    dirs_to_delete = [
-                        os.path.join(main_download_dir, "unclassified", "ID", user_id),
-                        os.path.join(main_download_dir, "Reels", "ID", user_id),
-                        os.path.join(main_download_dir, "인물", f"user_{user_id}"),
-                        os.path.join(main_download_dir, "비인물", f"user_{user_id}")
-                    ]
-                    
-                    for dir_path in dirs_to_delete:
-                        if os.path.exists(dir_path):
-                            shutil.rmtree(dir_path)
-                            append_status(f"삭제됨: {dir_path}")
-                            deleted_count += 1
-                    
-                except Exception as e:
-                    append_status(f"오류: {user_id} 삭제 중 오류 발생 - {e}")
-            
-            # 사용자 ID 리스트박스에서 선택된 항목들 제거 (역순으로)
-            for index in sorted_user_id_indices:
-                user_id_listbox.delete(index)
-        
-        append_status(f"삭제 완료: {deleted_count}개의 디렉토리가 삭제되었습니다.")
+    # 삭제 함수를 모듈에서 호출
+    def delete_selected_items_wrapper():
+        delete_selected_items(hashtag_listbox, user_id_listbox, download_directory_var, append_status)
 
-    def load_existing_directories():
-        """
-        다운로드 경로에 있는 기존 디렉토리들을 불러옵니다.
-        다운로드 경로가 없으면 생성합니다.
-        
-        - 해시태그 관련 디렉토리는 '인물' 폴더 내에서 'hashtag_'로 시작하는 디렉토리를 찾아,
-          접두어 'hashtag_'를 제거한 나머지 부분을 해시태그 목록에 추가합니다.
-        - 사용자 ID 관련 디렉토리는 '인물' 폴더 내에서 'user_'로 시작하는 디렉토리를 찾아 목록에 추가합니다.
-        """
-        main_download_dir = download_directory_var.get()
-        if not os.path.isdir(main_download_dir):
-            append_status(f"오류: 다운로드 경로가 존재하지 않습니다: {main_download_dir}")
-            return
-        # '인물' 폴더는 해시태그와 사용자 디렉토리 모두 포함하는 상위 폴더입니다.
-        people_dir = os.path.join(main_download_dir, '인물')
-        create_dir_if_not_exists(people_dir)
-        
-        # 해시태그 목록 새로고침: 'hashtag_'로 시작하는 디렉토리들만 추가
-        hashtag_listbox.delete(0, tk.END)
-        for d in os.listdir(people_dir):
-            full_path = os.path.join(people_dir, d)
-            if os.path.isdir(full_path) and d.startswith("hashtag_"):
-                # 접두어 'hashtag_' 제거 후 남은 부분을 목록에 추가
-                hashtag_listbox.insert(tk.END, d[len("hashtag_"):])
-        
-        # 사용자 ID 목록 새로고침: 'user_'로 시작하는 디렉토리들만 추가
-        user_id_listbox.delete(0, tk.END)
-        nonlocal user_ids_cached
-        user_ids_cached = []
-        for d in os.listdir(people_dir):
-            full_path = os.path.join(people_dir, d)
-            if os.path.isdir(full_path) and d.startswith("user_"):
-                actual_uid = d[len("user_"):]
-                try:
-                    ct = os.path.getctime(full_path)
-                    mt = os.path.getmtime(full_path)
-                    user_ids_cached.append((actual_uid, ct, mt))
-                except Exception as e:
-                    append_status(f"경고: {d} 생성/수정일 오류: {e}")
-        for uid, _, _ in sorted(user_ids_cached, key=lambda x: x[1], reverse=True):
-            user_id_listbox.insert(tk.END, uid)
+    # 삭제 버튼 추가
+    ttk.Button(selection_buttons_frame, text="선택된 대상 삭제",
+               command=delete_selected_items_wrapper, width=15
+    ).grid(row=2, column=0, columnspan=2, padx=5, pady=2, sticky='ew')
 
-    def sort_user_ids_by_creation_desc():
-        user_id_listbox.delete(0, tk.END)
-        for uid, ct, mt in sorted(user_ids_cached, key=lambda x: x[1], reverse=True):
-            user_id_listbox.insert(tk.END, uid)
-        append_status("사용자 ID가 생성일 내림차순 정렬됨.")
+    # 디렉토리 로드 함수를 모듈에서 호출
+    def load_existing_directories_wrapper():
+        load_existing_directories(hashtag_listbox, user_id_listbox, download_directory_var, append_status)
 
-    def sort_user_ids_by_creation_asc():
-        user_id_listbox.delete(0, tk.END)
-        for uid, ct, mt in sorted(user_ids_cached, key=lambda x: x[1]):
-            user_id_listbox.insert(tk.END, uid)
-        append_status("사용자 ID가 생성일 오름차순 정렬됨.")
+    # 정렬 함수들을 모듈에서 호출
+    def sort_user_ids_by_creation_desc_wrapper():
+        sort_user_ids_by_creation_desc(user_id_listbox, append_status)
 
-    def sort_user_ids_by_modified_asc():
-        ini_path = os.path.join(os.path.dirname(__file__), 'latest-stamps-images.ini')
-        if not os.path.isfile(ini_path):
-            append_status("오류: latest-stamps-images.ini 없음.")
-            return
-        parser = configparser.ConfigParser()
-        parser.read(ini_path, encoding='utf-8')
-        ini_ts = {}
-        for section in parser.sections():
-            if parser[section].get('post-timestamp'):
-                raw = parser[section]['post-timestamp'].strip()
-                dt = None
-                try:
-                    dt = datetime.strptime(raw, "%Y-%m-%dT%H:%M:%S.%f%z")
-                except ValueError:
-                    try:
-                        dt = datetime.fromisoformat(raw)
-                    except Exception:
-                        pass
-                if dt:
-                    ini_ts[section] = dt
-        uids_dirs = {uid for uid, _, _ in user_ids_cached}
-        uids_ini = set(ini_ts.keys())
-        combined = uids_dirs.union(uids_ini)
-        user_list = [(uid, ini_ts.get(uid)) for uid in combined]
-        with_ts = [item for item in user_list if item[1] is not None]
-        without_ts = [item for item in user_list if item[1] is None]
-        with_ts.sort(key=lambda x: x[1])
-        final_sorted = with_ts + without_ts
-        user_id_listbox.delete(0, tk.END)
-        for uid, _ in final_sorted:
-            user_id_listbox.insert(tk.END, uid)
-        append_status("INI 기준 오름차순 정렬 완료.")
+    def sort_user_ids_by_creation_asc_wrapper():
+        sort_user_ids_by_creation_asc(user_id_listbox, append_status)
+
+    def sort_user_ids_by_modified_asc_wrapper():
+        sort_user_ids_by_modified_asc(user_id_listbox, append_status)
     
-    def manage_non_existent_profiles():
-        """
-        존재하지 않는 프로필 목록을 관리하는 창을 엽니다.
-        """
-        non_existent_window = tk.Toplevel(root)
-        non_existent_window.title("존재하지 않는 프로필 관리")
-        non_existent_window.geometry("500x400")
-        non_existent_window.resizable(False, False)
-        
-        # 프레임 생성
-        main_frame = ttk.Frame(non_existent_window, padding=10)
-        main_frame.pack(fill='both', expand=True)
-        
-        ttk.Label(main_frame, text="존재하지 않는 프로필 목록:", font=('Arial', 12, 'bold')).pack(anchor='w', pady=(0, 10))
-        
-        # 리스트박스와 스크롤바
-        list_frame = ttk.Frame(main_frame)
-        list_frame.pack(fill='both', expand=True, pady=(0, 10))
-        
-        non_existent_listbox = tk.Listbox(list_frame, height=15, font=('Arial', 10), selectmode=tk.EXTENDED)
-        non_existent_listbox.pack(side='left', fill='both', expand=True, padx=(0, 5))
-        
-        scrollbar = ttk.Scrollbar(list_frame, orient="vertical", command=non_existent_listbox.yview)
-        scrollbar.pack(side='right', fill='y')
-        non_existent_listbox.config(yscrollcommand=scrollbar.set)
-        
-        # 버튼 프레임
-        button_frame = ttk.Frame(main_frame)
-        button_frame.pack(fill='x', pady=(0, 10))
-        
-        def refresh_list():
-            """리스트를 새로고침합니다."""
-            non_existent_listbox.delete(0, tk.END)
-            non_existent_profiles = config.get('NON_EXISTENT_PROFILES', [])
-            for profile in non_existent_profiles:
-                non_existent_listbox.insert(tk.END, profile)
-            append_status(f"존재하지 않는 프로필 목록 새로고침: {len(non_existent_profiles)}개")
-        
-        def remove_selected():
-            """선택된 프로필을 목록에서 제거합니다."""
-            indices = non_existent_listbox.curselection()
-            if not indices:
-                append_status("오류: 제거할 프로필을 선택하세요.")
-                return
-            
-            selected_profiles = [non_existent_listbox.get(i) for i in indices]
-            confirm_message = f"선택된 프로필을 목록에서 제거하시겠습니까?\n\n{', '.join(selected_profiles)}"
-            result = messagebox.askyesno("제거 확인", confirm_message)
-            
-            if result:
-                non_existent_profiles = config.get('NON_EXISTENT_PROFILES', [])
-                for profile in selected_profiles:
-                    if profile in non_existent_profiles:
-                        non_existent_profiles.remove(profile)
-                
-                config['NON_EXISTENT_PROFILES'] = non_existent_profiles
-                save_config(config)
-                refresh_list()
-                append_status(f"프로필 {len(selected_profiles)}개가 목록에서 제거되었습니다.")
-        
-        def clear_all():
-            """모든 프로필을 목록에서 제거합니다."""
-            non_existent_profiles = config.get('NON_EXISTENT_PROFILES', [])
-            if not non_existent_profiles:
-                append_status("제거할 프로필이 없습니다.")
-                return
-            
-            confirm_message = f"모든 프로필을 목록에서 제거하시겠습니까?\n\n총 {len(non_existent_profiles)}개"
-            result = messagebox.askyesno("전체 제거 확인", confirm_message)
-            
-            if result:
-                config['NON_EXISTENT_PROFILES'] = []
-                save_config(config)
-                refresh_list()
-                append_status("모든 프로필이 목록에서 제거되었습니다.")
-        
-        def add_manual():
-            """수동으로 프로필을 추가합니다."""
-            add_window = tk.Toplevel(non_existent_window)
-            add_window.title("프로필 추가")
-            add_window.geometry("300x150")
-            add_window.resizable(False, False)
-            
-            ttk.Label(add_window, text="추가할 프로필명:").pack(pady=(20, 5))
-            entry = ttk.Entry(add_window, width=30)
-            entry.pack(pady=(0, 20))
-            entry.focus()
-            
-            def add_profile():
-                profile_name = entry.get().strip()
-                if not profile_name:
-                    append_status("오류: 프로필명을 입력하세요.")
-                    return
-                
-                non_existent_profiles = config.get('NON_EXISTENT_PROFILES', [])
-                if profile_name not in non_existent_profiles:
-                    non_existent_profiles.append(profile_name)
-                    config['NON_EXISTENT_PROFILES'] = non_existent_profiles
-                    save_config(config)
-                    refresh_list()
-                    append_status(f"프로필 '{profile_name}'이 목록에 추가되었습니다.")
-                else:
-                    append_status(f"프로필 '{profile_name}'은 이미 목록에 있습니다.")
-                
-                add_window.destroy()
-            
-            ttk.Button(add_window, text="추가", command=add_profile).pack(pady=(0, 10))
-            entry.bind('<Return>', lambda e: add_profile())
-        
-        # 버튼들
-        ttk.Button(button_frame, text="새로고침", command=refresh_list, width=12).pack(side='left', padx=(0, 5))
-        ttk.Button(button_frame, text="선택 제거", command=remove_selected, width=12).pack(side='left', padx=(0, 5))
-        ttk.Button(button_frame, text="전체 제거", command=clear_all, width=12).pack(side='left', padx=(0, 5))
-        ttk.Button(button_frame, text="수동 추가", command=add_manual, width=12).pack(side='left')
-        
-        # 초기 로드
-        refresh_list()
+    # 존재하지 않는 프로필 관리 함수를 모듈에서 호출
+    def manage_non_existent_profiles_wrapper():
+        manage_non_existent_profiles(append_status)
     
     sort_buttons_frame = ttk.Frame(existing_dirs_frame)
     sort_buttons_frame.grid(row=1, column=1, padx=5, pady=2, sticky='nsew')
     sort_buttons_frame.columnconfigure(0, weight=1)
     sort_buttons_frame.columnconfigure(1, weight=1)
-    ttk.Button(sort_buttons_frame, text="생성일 내림차순", command=sort_user_ids_by_creation_desc).grid(row=0, column=0, padx=5, pady=2, sticky='ew')
-    ttk.Button(sort_buttons_frame, text="(INI) 오름차순", command=sort_user_ids_by_modified_asc).grid(row=0, column=1, padx=5, pady=2, sticky='ew')
-    ttk.Button(sort_buttons_frame, text="생성일 오름차순", command=sort_user_ids_by_creation_asc).grid(row=1, column=0, padx=5, pady=2, sticky='ew')
-    ttk.Button(existing_dirs_frame, text="새로 고침", command=load_existing_directories, width=15).grid(row=1, column=0, pady=5)
+    ttk.Button(sort_buttons_frame, text="생성일 내림차순", command=sort_user_ids_by_creation_desc_wrapper).grid(row=0, column=0, padx=5, pady=2, sticky='ew')
+    ttk.Button(sort_buttons_frame, text="(INI) 오름차순", command=sort_user_ids_by_modified_asc_wrapper).grid(row=0, column=1, padx=5, pady=2, sticky='ew')
+    ttk.Button(sort_buttons_frame, text="생성일 오름차순", command=sort_user_ids_by_creation_asc_wrapper).grid(row=1, column=0, padx=5, pady=2, sticky='ew')
+    ttk.Button(existing_dirs_frame, text="새로 고침", command=load_existing_directories_wrapper, width=15).grid(row=1, column=0, pady=5)
     
     # 존재하지 않는 프로필 관리 버튼 추가
     ttk.Button(existing_dirs_frame, text="존재하지 않는 프로필 관리", 
-               command=lambda: manage_non_existent_profiles(), width=20).grid(row=1, column=2, pady=5)
+               command=manage_non_existent_profiles_wrapper, width=20).grid(row=1, column=2, pady=5)
 
     progress_frame = ttk.Frame(root)
     progress_frame.grid(row=6, column=0, padx=10, pady=5, sticky='ew')
     progress_frame.columnconfigure(0, weight=1)
-    progress_label_var = tk.StringVar()
-    progress_label = ttk.Label(progress_frame, textvariable=progress_label_var)
-    progress_label.grid(row=0, column=0, sticky='w', padx=10, pady=(0,5))
-    progress_var = tk.DoubleVar()
-    progress_bar = ttk.Progressbar(progress_frame, variable=progress_var, maximum=100)
-    progress_bar.grid(row=1, column=0, sticky='ew', padx=10, pady=5)
+    
+    # 전체 진행률
+    overall_progress_label_var = tk.StringVar(value="전체 진행률: 0% (0/0)")
+    overall_progress_label = ttk.Label(progress_frame, textvariable=overall_progress_label_var, font=('Arial', 10, 'bold'))
+    overall_progress_label.grid(row=0, column=0, sticky='w', padx=10, pady=(0,2))
+    overall_progress_var = tk.DoubleVar()
+    overall_progress_bar = ttk.Progressbar(progress_frame, variable=overall_progress_var, maximum=100, length=400)
+    overall_progress_bar.grid(row=1, column=0, sticky='ew', padx=10, pady=2)
+    
+    # 현재 프로필 진행률
+    current_progress_label_var = tk.StringVar(value="현재 프로필: 대기 중...")
+    current_progress_label = ttk.Label(progress_frame, textvariable=current_progress_label_var, font=('Arial', 9))
+    current_progress_label.grid(row=2, column=0, sticky='w', padx=10, pady=(2,2))
+    current_progress_var = tk.DoubleVar()
+    current_progress_bar = ttk.Progressbar(progress_frame, variable=current_progress_var, maximum=100, length=400)
+    current_progress_bar.grid(row=3, column=0, sticky='ew', padx=10, pady=2)
+    
+    # 예상 완료 시간
+    eta_label_var = tk.StringVar(value="예상 완료 시간: 계산 중...")
+    eta_label = ttk.Label(progress_frame, textvariable=eta_label_var, font=('Arial', 8))
+    eta_label.grid(row=4, column=0, sticky='w', padx=10, pady=(2,5))
     global_stop_event = threading.Event()
+    
+    # 설정 업데이트를 위한 전역 변수
+    config_update_pending = set()  # 제거할 검색어들을 저장
+    last_config_update_time = 0
 
     main_search_terms = []
     main_search_type = ""
 
-    def process_queue(q):
-        try:
-            while True:
-                msg = q.get_nowait()
-                if msg[0] == "term_start":
-                    append_status(f"시작: {msg[1]} (계정: {msg[2]})")
-                elif msg[0] == "term_progress":
-                    append_status(f"진행: {msg[1]} - {msg[2]} (계정: {msg[3]})")
-                elif msg[0] == "term_complete":
-                    append_status(f"완료: {msg[1]} (계정: {msg[2]})")
-                elif msg[0] == "term_error":
-                    # 프로필이 존재하지 않는 경우 유사한 프로필 정보도 표시
-                    if "does not exist" in msg[2]:
-                        append_status(f"프로필이 존재하지 않음: {msg[1]}")
-                        if "The most similar profiles are:" in msg[2]:
-                            # 유사한 프로필 정보 추출
-                            similar_profiles = msg[2].split("The most similar profiles are:")[1].strip()
-                            append_status(f"유사한 프로필: {similar_profiles}")
-                    else:
-                        append_status(f"오류: {msg[1]} - {msg[2]} (계정: {msg[3]})")
-                elif msg[0] == "account_switch":
-                    append_status(f"계정 전환: {msg[1]}")
-                elif msg[0] == "account_relogin":
-                    append_status(f"재로그인 시도: {msg[1]}")
-        except Empty:
-            pass
-        root.after(100, lambda: process_queue(q))
+    # 프로그레스바 업데이트 함수들
+    def update_overall_progress(current, total, current_term=""):
+        """전체 진행률 업데이트"""
+        if total > 0:
+            percentage = (current / total) * 100
+            overall_progress_var.set(percentage)
+            overall_progress_label_var.set(f"전체 진행률: {percentage:.1f}% ({current}/{total})")
+            if current_term:
+                overall_progress_label_var.set(f"전체 진행률: {percentage:.1f}% ({current}/{total}) - {current_term}")
+    
+    def update_current_progress(current, total, term_name=""):
+        """현재 프로필 진행률 업데이트"""
+        if total > 0:
+            percentage = (current / total) * 100
+            current_progress_var.set(percentage)
+            current_progress_label_var.set(f"현재 프로필: {term_name} - {percentage:.1f}% ({current}/{total})")
+        else:
+            current_progress_var.set(0)
+            current_progress_label_var.set(f"현재 프로필: {term_name} - 대기 중...")
+    
+    def reset_progress():
+        """프로그레스바 초기화"""
+        overall_progress_var.set(0)
+        current_progress_var.set(0)
+        overall_progress_label_var.set("전체 진행률: 0% (0/0)")
+        current_progress_label_var.set("현재 프로필: 대기 중...")
+        eta_label_var.set("예상 완료 시간: 계산 중...")
+    
+    def update_eta(start_time, current, total):
+        """예상 완료 시간 업데이트"""
+        if current > 0 and total > 0:
+            elapsed_time = time.time() - start_time
+            avg_time_per_item = elapsed_time / current
+            remaining_items = total - current
+            estimated_remaining_time = avg_time_per_item * remaining_items
+            
+            # 예상 완료 시간 계산
+            estimated_completion_time = datetime.now() + timedelta(seconds=estimated_remaining_time)
+            eta_str = estimated_completion_time.strftime("%H:%M:%S")
+            
+            # 남은 시간을 분:초 형태로 표시
+            remaining_minutes = int(estimated_remaining_time // 60)
+            remaining_seconds = int(estimated_remaining_time % 60)
+            time_str = f"{remaining_minutes}분 {remaining_seconds}초"
+            
+            eta_label_var.set(f"예상 완료 시간: {eta_str} (약 {time_str} 남음)")
+
+    # 설정 업데이트 함수 (배치 처리)
+    def update_config_batch():
+        nonlocal last_config_update_time
+        import time
+        current_time = time.time()
+        
+        # 1초 이상 지났고 업데이트할 항목이 있으면 처리
+        if config_update_pending and (current_time - last_config_update_time) > 1.0:
+            try:
+                config = load_config()
+                search_terms = config.get('SEARCH_TERMS', [])
+                
+                # 제거할 항목들을 일괄 제거
+                for term_to_remove in config_update_pending:
+                    if term_to_remove in search_terms:
+                        search_terms.remove(term_to_remove)
+                
+                config['SEARCH_TERMS'] = search_terms
+                save_config(config)
+                
+                removed_count = len(config_update_pending)
+                config_update_pending.clear()
+                last_config_update_time = current_time
+                
+                append_status(f"설정 파일 업데이트: {removed_count}개 항목 제거됨")
+            except Exception as e:
+                append_status(f"설정 파일 업데이트 오류: {e}")
+                config_update_pending.clear()
+
+    # process_queue 함수를 모듈에서 호출
+    def process_queue_wrapper(q):
+        process_queue(q, append_status, word_text, config_update_pending)
+        update_config_batch()  # 설정 업데이트 확인
+        root.after(100, lambda: process_queue_wrapper(q))
 
     def reclassify_classified_images(stop_evt):
         stop_evt.clear()
@@ -842,33 +493,49 @@ def main_gui():
             append_status("분류된 이미지 선택 없음.")
             return
         total = len(dirs_to_reclassify)
-        root.after(0, lambda: progress_var.set(0))
+        reset_progress()
+        update_overall_progress(0, total, "재분류 시작")
         append_status("재분류 진행 중...")
         def worker():
             for i, (term, stype, img_dir) in enumerate(dirs_to_reclassify, start=1):
                 if stop_evt.is_set():
                     append_status("중지: 재분류 중지됨.")
                     return
+                
+                # 현재 프로필 진행률 업데이트
+                update_current_progress(0, 1, f"재분류: {term}")
+                
                 success = process_images(
                     root, append_status, download_directory_var,
                     term, "", config['LAST_SEARCH_TYPE'], stop_evt,
                     upscale=False,
                     classified=True
                 )
-                root.after(0, lambda p=(i/total)*100: progress_var.set(p))
+                
+                # 전체 진행률 업데이트
+                update_overall_progress(i, total, f"재분류: {term}")
+                
                 if success:
                     append_status(f"완료: {term} 재분류 완료.")
                 else:
                     append_status(f"오류: {term} 재분류 오류.")
+            
             append_status("모든 재분류 완료.")
-            root.after(0, lambda: progress_label_var.set("재분류 완료"))
-            load_existing_directories()
+            update_overall_progress(total, total, "재분류 완료")
+            update_current_progress(0, 0, "재분류 완료")
+            eta_label_var.set("재분류 완료!")
+            load_existing_directories_wrapper()
         threading.Thread(target=worker, daemon=True).start()
 
     ttk.Button(existing_dirs_frame, text="분류된 이미지 재분류", command=lambda: reclassify_classified_images(global_stop_event), width=20).grid(row=3, column=2, padx=5, pady=2, sticky='ew')
 
     def start_crawling():
         append_status("크롤링 시작됨...")
+        
+        # 프로그레스바 초기화
+        reset_progress()
+        start_time = time.time()
+        
         terms_raw = word_text.get("1.0", tk.END).strip()
         if not terms_raw:
             append_status("오류: 검색할 해시태그 또는 사용자 ID 입력 필요.")
@@ -880,21 +547,56 @@ def main_gui():
             append_status("오류: 유효한 검색어 없음.")
             return
         
-        # 존재하지 않는 프로필 제외
-        non_existent_profiles = config.get('NON_EXISTENT_PROFILES', [])
-        if non_existent_profiles and config['LAST_SEARCH_TYPE'] == 'user':
-            original_count = len(search_terms)
-            search_terms = [term for term in search_terms if term not in non_existent_profiles]
-            excluded_count = original_count - len(search_terms)
+        # 존재하지 않는 프로필 제외 (profile-id 기반)
+        if config['LAST_SEARCH_TYPE'] == 'user':
+            # config를 한 번만 로드해서 재사용
+            from crawling.profile_manager import load_profile_ids_from_stamps
+            
+            non_existent_profile_ids = config.get('NON_EXISTENT_PROFILE_IDS', [])
+            profile_ids_map = load_profile_ids_from_stamps()  # 한 번만 로드
+            excluded_terms = []
+            
+            # profile-id 기반으로 제외할 프로필 찾기
+            for term in search_terms[:]:  # 복사본으로 반복
+                profile_id = profile_ids_map.get(term)  # 이미 로드된 맵에서 조회
+                if profile_id and profile_id in non_existent_profile_ids:  # config에서 직접 확인
+                    search_terms.remove(term)
+                    excluded_terms.append(term)
+            
+            # 하위 호환성을 위한 username 기반 제외 (profile-id가 없는 경우)
+            non_existent_profiles = config.get('NON_EXISTENT_PROFILES', [])
+            for term in search_terms[:]:  # 복사본으로 반복
+                if term in non_existent_profiles:
+                    search_terms.remove(term)
+                    excluded_terms.append(term)
+            
+            excluded_count = len(excluded_terms)
             if excluded_count > 0:
-                excluded_terms = [term for term in terms_raw.replace(',', '\n').split('\n') if term.strip() in non_existent_profiles]
                 append_status(f"존재하지 않는 프로필 {excluded_count}개 제외됨: {', '.join(excluded_terms)}")
+                
+                # GUI 검색목록에서도 제외된 프로필들 제거
+                current_text = word_text.get("1.0", tk.END).strip()
+                if current_text:
+                    lines = current_text.split('\n')
+                    # 제외된 프로필들을 필터링
+                    filtered_lines = [line.strip() for line in lines if line.strip() and line.strip() not in excluded_terms]
+                    # 새로운 텍스트로 업데이트
+                    word_text.delete("1.0", tk.END)
+                    if filtered_lines:
+                        word_text.insert("1.0", '\n'.join(filtered_lines))
+                    append_status(f"검색목록에서 존재하지 않는 프로필 {excluded_count}개 제거됨")
         
         if not search_terms:
             append_status("오류: 제외 후 유효한 검색어가 없습니다.")
             return
         
         config['SEARCH_TERMS'] = search_terms
+        
+        # 전체 진행률 초기화
+        global total_terms
+        total_terms = len(search_terms)
+        update_overall_progress(0, total_terms)
+        
         try:
             target = int(post_count_entry.get().strip())
             if target < 0:
@@ -959,11 +661,16 @@ def main_gui():
                 append_status,
                 root,
                 download_directory_var,
-                allow_duplicate
+                allow_duplicate,
+                update_overall_progress,
+                update_current_progress,
+                update_eta,
+                start_time,
+                total_terms
             ),
             daemon=True
         ).start()
-        process_queue(q)
+        process_queue_wrapper(q)
 
     def stop_crawling():
         global_stop_event.set()
@@ -979,9 +686,20 @@ def main_gui():
 
     def on_complete(message):
         append_status(f"완료: {message}")
-        progress_var.set(100)
-        progress_label_var.set("100% 완료")
-        load_existing_directories()
+        # 전체 진행률을 100%로 설정
+        if 'total_terms' in globals():
+            update_overall_progress(total_terms, total_terms, "완료")
+        else:
+            update_overall_progress(1, 1, "완료")
+        # 현재 프로필 진행률 초기화
+        update_current_progress(0, 0, "완료")
+        eta_label_var.set("완료!")
+        
+        # 마지막 배치 업데이트 처리
+        if config_update_pending:
+            update_config_batch()
+        
+        load_existing_directories_wrapper()
 
     if config['ACCOUNTS']:
         for account in config['ACCOUNTS']:
@@ -999,14 +717,14 @@ def main_gui():
     
     def initial_toggle():
         if loaded_searchtype == 'hashtag':
-            toggle_human_classify(hashtag_frame, include_images_var_hashtag, include_human_classify_var_hashtag)
+            toggle_human_classify_wrapper(hashtag_frame, include_images_var_hashtag, include_human_classify_var_hashtag)
         else:
-            toggle_human_classify(user_id_frame, include_images_var_user, include_human_classify_var_user)
+            toggle_human_classify_wrapper(user_id_frame, include_images_var_user, include_human_classify_var_user)
     initial_toggle()
     
     root.rowconfigure(7, weight=1)
     root.columnconfigure(0, weight=1)
-    load_existing_directories()
+    load_existing_directories_wrapper()
     root.mainloop()
     print("GUI 종료")
 

@@ -9,6 +9,7 @@ import random
 from datetime import datetime
 from crawling.utils import create_dir_if_not_exists, logging
 from crawling.config import load_config, save_config
+from crawling.profile_manager import add_non_existent_profile_id, is_profile_id_non_existent, get_profile_id_for_username
 from sqlite3 import OperationalError, connect
 from platform import system
 from glob import glob
@@ -303,12 +304,17 @@ def user_download_with_profiles(L, search_user, target, include_images, include_
                         print(f"프로필 조회 실패: {old_username} - {error_msg}")
                         # "does not exist" 메시지가 포함된 경우 유사한 프로필 정보도 표시
                         if "does not exist" in error_msg:
-                            # 존재하지 않는 프로필을 설정에 저장
-                            config = load_config()
-                            if old_username not in config.get('NON_EXISTENT_PROFILES', []):
-                                config.setdefault('NON_EXISTENT_PROFILES', []).append(old_username)
-                                save_config(config)
-                                print(f"존재하지 않는 프로필 '{old_username}'을 설정에 저장했습니다.")
+                            # 저장된 profile-id가 있으면 해당 ID를 존재하지 않는 프로필로 저장
+                            stored_profile_id = get_profile_id_for_username(old_username)
+                            if stored_profile_id:
+                                add_non_existent_profile_id(stored_profile_id, old_username)
+                            else:
+                                # profile-id가 없으면 username으로 저장 (하위 호환성)
+                                config = load_config()
+                                if old_username not in config.get('NON_EXISTENT_PROFILES', []):
+                                    config.setdefault('NON_EXISTENT_PROFILES', []).append(old_username)
+                                    save_config(config)
+                                    print(f"존재하지 않는 프로필 '{old_username}'을 설정에 저장했습니다.")
                             progress_queue.put(("term_error", old_username, error_msg, L.context.username))
                         else:
                             progress_queue.put(("term_error", old_username, f"프로필 조회 실패: {error_msg}", L.context.username))
@@ -323,12 +329,17 @@ def user_download_with_profiles(L, search_user, target, include_images, include_
                     print(f"프로필 조회 실패: {search_user} - {error_msg}")
                     # "does not exist" 메시지가 포함된 경우 유사한 프로필 정보도 표시
                     if "does not exist" in error_msg:
-                        # 존재하지 않는 프로필을 설정에 저장
-                        config = load_config()
-                        if search_user not in config.get('NON_EXISTENT_PROFILES', []):
-                            config.setdefault('NON_EXISTENT_PROFILES', []).append(search_user)
-                            save_config(config)
-                            print(f"존재하지 않는 프로필 '{search_user}'을 설정에 저장했습니다.")
+                        # 저장된 profile-id가 있으면 해당 ID를 존재하지 않는 프로필로 저장
+                        stored_profile_id = get_profile_id_for_username(search_user)
+                        if stored_profile_id:
+                            add_non_existent_profile_id(stored_profile_id, search_user)
+                        else:
+                            # profile-id가 없으면 username으로 저장 (하위 호환성)
+                            config = load_config()
+                            if search_user not in config.get('NON_EXISTENT_PROFILES', []):
+                                config.setdefault('NON_EXISTENT_PROFILES', []).append(search_user)
+                                save_config(config)
+                                print(f"존재하지 않는 프로필 '{search_user}'을 설정에 저장했습니다.")
                         progress_queue.put(("term_error", search_user, error_msg, L.context.username))
                     else:
                         progress_queue.put(("term_error", search_user, f"프로필 조회 실패: {error_msg}", L.context.username))
@@ -394,7 +405,8 @@ def user_download_with_profiles(L, search_user, target, include_images, include_
 
 def crawl_and_download(search_terms, target, accounts, search_type, include_images, include_videos, include_reels,
                        include_human_classify, include_upscale, progress_queue, on_complete, stop_event, download_path='download', append_status=None,
-                       root=None, download_directory_var=None, allow_duplicate=False):
+                       root=None, download_directory_var=None, allow_duplicate=False, update_overall_progress=None, 
+                       update_current_progress=None, update_eta=None, start_time=None, total_terms=None):
     """
     인스타그램 게시물을 크롤링 및 다운로드하는 메인 함수.
     
@@ -486,10 +498,23 @@ def crawl_and_download(search_terms, target, accounts, search_type, include_imag
             L = loader_dict['loader']
             current_username = loader_dict['username']
             try:
-                for term in search_terms:
+                for i, term in enumerate(search_terms):
                     if stop_event.is_set():
                         append_status("중지: 다운로드 중지 신호 감지됨.")
                         return
+                    
+                    # 전체 진행률 업데이트
+                    if update_overall_progress and total_terms:
+                        update_overall_progress(i, total_terms, term)
+                    
+                    # 현재 프로필 진행률 초기화
+                    if update_current_progress:
+                        update_current_progress(0, 1, term)
+                    
+                    # 예상 완료 시간 업데이트
+                    if update_eta and start_time:
+                        update_eta(start_time, i, total_terms)
+                    
                     progress_queue.put(("term_progress", term, "콘텐츠 다운로드 시작", L.context.username))
                     if search_type == 'hashtag':
                         download_posts(L, current_username, term, search_type, target,
