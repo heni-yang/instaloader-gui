@@ -8,6 +8,7 @@ import shutil
 import random
 from datetime import datetime
 from crawling.utils import create_dir_if_not_exists, logging
+from crawling.config import load_config, save_config
 from sqlite3 import OperationalError, connect
 from platform import system
 from glob import glob
@@ -21,7 +22,7 @@ create_dir_if_not_exists(SESSION_DIR)
 STAMPS_FILE_IMAGES = os.path.join(os.path.dirname(os.path.abspath(__file__)), "latest-stamps-images.ini")
 STAMPS_FILE_REELS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "latest-stamps-reels.ini")
 
-def instaloader_login(username, password, download_path, include_videos=False, include_reels=False, cookiefile=None):
+def instaloader_login(username, password, download_path, include_videos=False, include_reels=False, cookiefile=None, resume_prefix=None, rate_limit_config=None):
     """
     Instaloader를 사용해 인스타그램에 로그인합니다.
     
@@ -36,6 +37,19 @@ def instaloader_login(username, password, download_path, include_videos=False, i
     반환:
         Instaloader 객체 또는 None.
     """
+    if resume_prefix is None:
+        resume_prefix = os.path.join(os.path.dirname(STAMPS_FILE_IMAGES), f"resume_{username}")
+    
+    # Rate Limiting 설정 적용
+    if rate_limit_config:
+        min_sleep = rate_limit_config.get('min_sleep', 3.0)
+        max_sleep = rate_limit_config.get('max_sleep', 10.0)
+        multiplier = rate_limit_config.get('multiplier', 1.5)
+    else:
+        min_sleep = 3.0
+        max_sleep = 10.0
+        multiplier = 1.5
+        
     L = instaloader.Instaloader(
         download_videos=include_videos or include_reels,
         download_video_thumbnails=False,
@@ -43,7 +57,10 @@ def instaloader_login(username, password, download_path, include_videos=False, i
         download_comments=False,
         save_metadata=False,
         post_metadata_txt_pattern='',
-        dirname_pattern=download_path
+        dirname_pattern=download_path,
+        max_connection_attempts=3,  # 재시도 횟수를 3회로 제한
+        resume_prefix=resume_prefix,
+        rate_controller=lambda context: RateController(context)
     )
     session_file = os.path.join(SESSION_DIR, f"{username}.session")
     
@@ -152,7 +169,7 @@ def download_posts(
 
         try:
             if include_images or include_videos:
-                L.download_hashtag_top_posts(
+                L.download_hashtag_top_serp(
                     search_term,
                     max_count=total_posts,
                     post_filter=my_tag_filter,
@@ -255,6 +272,15 @@ def user_download_with_profiles(L, search_user, target, include_images, include_
 
             old_username = search_user
             stored_id = latest_stamps_images.get_profile_id(old_username)
+            profile = None
+            
+            # 프로필 조회 시도 (재시도 횟수 제한)
+            max_retries = 3
+            retry_count = 0
+            
+            # Rate Limiting을 위한 대기 시간
+            time.sleep(2)
+            
             if stored_id:
                 try:
                     temp_profile = Profile.from_id(L_content.context, stored_id)
@@ -268,13 +294,57 @@ def user_download_with_profiles(L, search_user, target, include_images, include_
                         profile = Profile.from_id(L_content.context, stored_id)
                 except Exception as e:
                     print(f"저장된 ID로 프로필 조회 실패: {e}")
-                    profile = Profile.from_username(L_content.context, old_username)
+                    # 저장된 ID로 실패한 경우 username으로 재시도
+                    profile = None
+                    try:
+                        profile = Profile.from_username(L_content.context, old_username)
+                    except Exception as e:
+                        error_msg = str(e)
+                        print(f"프로필 조회 실패: {old_username} - {error_msg}")
+                        # "does not exist" 메시지가 포함된 경우 유사한 프로필 정보도 표시
+                        if "does not exist" in error_msg:
+                            # 존재하지 않는 프로필을 설정에 저장
+                            config = load_config()
+                            if old_username not in config.get('NON_EXISTENT_PROFILES', []):
+                                config.setdefault('NON_EXISTENT_PROFILES', []).append(old_username)
+                                save_config(config)
+                                print(f"존재하지 않는 프로필 '{old_username}'을 설정에 저장했습니다.")
+                            progress_queue.put(("term_error", old_username, error_msg, L.context.username))
+                        else:
+                            progress_queue.put(("term_error", old_username, f"프로필 조회 실패: {error_msg}", L.context.username))
+                        return
             else:
-                profile = Profile.from_username(L_content.context, search_user)
+                # 저장된 ID가 없는 경우 username으로 조회
+                profile = None
+                try:
+                    profile = Profile.from_username(L_content.context, search_user)
+                except Exception as e:
+                    error_msg = str(e)
+                    print(f"프로필 조회 실패: {search_user} - {error_msg}")
+                    # "does not exist" 메시지가 포함된 경우 유사한 프로필 정보도 표시
+                    if "does not exist" in error_msg:
+                        # 존재하지 않는 프로필을 설정에 저장
+                        config = load_config()
+                        if search_user not in config.get('NON_EXISTENT_PROFILES', []):
+                            config.setdefault('NON_EXISTENT_PROFILES', []).append(search_user)
+                            save_config(config)
+                            print(f"존재하지 않는 프로필 '{search_user}'을 설정에 저장했습니다.")
+                        progress_queue.put(("term_error", search_user, error_msg, L.context.username))
+                    else:
+                        progress_queue.put(("term_error", search_user, f"프로필 조회 실패: {error_msg}", L.context.username))
+                    return
 
             content_folder = os.path.join(base_path, "unclassified", "ID", profile.username)
             L_content.dirname_pattern = content_folder
-            create_dir_if_not_exists(content_folder)
+            create_dir_if_not_exists(content_folder)             
+
+            resume_prefix = f"resume_{profile.username}"
+            print("📌 [RESUME INFO]")
+            print(f" - resume_prefix: {resume_prefix}")
+            print(f" - dirname_pattern: {L_content.dirname_pattern}")
+            print(f" - 예상 저장 위치: {os.path.join(L_content.dirname_pattern, f'{os.path.basename(resume_prefix)}_<magic>.json.xz')}")
+
+            L_content.resume_prefix = resume_prefix 
 
             if latest_stamps_images.get_profile_id(profile.username) is None:
                 latest_stamps_images.save_profile_id(profile.username, profile.userid)
@@ -296,7 +366,7 @@ def user_download_with_profiles(L, search_user, target, include_images, include_
             }
 
             L_content.download_profiles(**image_kwargs)
-            progress_queue.put(("term_progress", profile.username, "콘텐츠 다운로드 완료", L.context.username))
+            progress_queue.put(("term_complete", profile.username, "콘텐츠 다운로드 완료", L.context.username))
 
             if include_reels:
                 reels_folder = os.path.join(base_path, 'Reels', 'ID', profile.username)
@@ -319,6 +389,7 @@ def user_download_with_profiles(L, search_user, target, include_images, include_
         except Exception as e:
             print(f"{search_user} 다운로드 오류: {e}")
             progress_queue.put(("term_error", search_user, f"콘텐츠 다운로드 오류: {e}", L.context.username))
+            #raise
     download_content()
 
 def crawl_and_download(search_terms, target, accounts, search_type, include_images, include_videos, include_reels,
@@ -355,6 +426,14 @@ def crawl_and_download(search_terms, target, accounts, search_type, include_imag
     
     loaded_loaders = []
     if not accounts:
+        # Rate Limiting 설정 로드
+        config = load_config()
+        rate_limit_config = {
+            'min_sleep': config.get('RATE_LIMIT_MIN_SLEEP', 3.0),
+            'max_sleep': config.get('RATE_LIMIT_MAX_SLEEP', 10.0),
+            'multiplier': config.get('RATE_LIMIT_MULTIPLIER', 1.5)
+        }
+        
         loader = instaloader.Instaloader(
             download_videos=include_videos,
             download_video_thumbnails=False,
@@ -363,10 +442,19 @@ def crawl_and_download(search_terms, target, accounts, search_type, include_imag
             save_metadata=False,
             post_metadata_txt_pattern='',
             dirname_pattern=base_download_path + "/unclassified",
+            max_connection_attempts=3,  # 재시도 횟수를 3회로 제한
             rate_controller=lambda context: RateController(context)
         )
         loaded_loaders.append({'loader': loader, 'username': 'anonymous', 'password': None, 'active': True})
     else:
+        # Rate Limiting 설정 로드
+        config = load_config()
+        rate_limit_config = {
+            'min_sleep': config.get('RATE_LIMIT_MIN_SLEEP', 3.0),
+            'max_sleep': config.get('RATE_LIMIT_MAX_SLEEP', 10.0),
+            'multiplier': config.get('RATE_LIMIT_MULTIPLIER', 1.5)
+        }
+        
         for account in accounts:
             loader = instaloader_login(
                 account['INSTAGRAM_USERNAME'],
@@ -374,7 +462,8 @@ def crawl_and_download(search_terms, target, accounts, search_type, include_imag
                 base_download_path + "/unclassified",
                 include_videos,
                 include_reels,
-                get_cookiefile()
+                get_cookiefile(),
+                rate_limit_config=rate_limit_config
             )
             if loader:
                 loaded_loaders.append({
@@ -401,7 +490,7 @@ def crawl_and_download(search_terms, target, accounts, search_type, include_imag
                     if stop_event.is_set():
                         append_status("중지: 다운로드 중지 신호 감지됨.")
                         return
-                    append_status(f"{current_username} 계정으로 {term} 다운로드 시작")
+                    progress_queue.put(("term_progress", term, "콘텐츠 다운로드 시작", L.context.username))
                     if search_type == 'hashtag':
                         download_posts(L, current_username, term, search_type, target,
                                        include_images, include_videos, progress_queue, stop_event, base_download_path)
@@ -411,7 +500,6 @@ def crawl_and_download(search_terms, target, accounts, search_type, include_imag
                     if stop_event.is_set():
                         append_status("중지: 다운로드 중지됨.")
                         return
-                    append_status(f"{current_username} 계정으로 {term} 다운로드 완료")
                     if include_human_classify and not stop_event.is_set():
                         classify_dir = os.path.join(base_download_path, 'unclassified',
                                                     'hashtag' if search_type == 'hashtag' else 'ID',
@@ -422,21 +510,30 @@ def crawl_and_download(search_terms, target, accounts, search_type, include_imag
                         if stop_event.is_set():
                             append_status("중지: 분류 중지됨.")
                             return
-                    # delay = random.uniform(60, 180)
-                    # print(f"다음 호출 전 {delay:.2f}초 대기...")
-                    # time.sleep(delay)
                 break
             except Exception as e:
-                print(f"계정 처리 오류: {e}")
+                error_msg = str(e)
+                print(f"계정 처리 오류: {error_msg}")
                 append_status(f"{current_username} 계정 오류, 재로그인 시도 중...")
                 progress_queue.put(("account_relogin", current_username, "재로그인 시도 중..."))
+
+                # 429 오류인 경우: 계정을 순환 (라운드 로빈)
+                if "429" in error_msg:
+                    print(f"429 오류 발생: {current_username}")
+                    account_index = (account_index + 1) % total_accounts
+                    print(f"계정 전환: {loaded_loaders[account_index]['username']}")
+                    progress_queue.put(("account_switch", loaded_loaders[account_index]['username'], "계정 전환 중..."))
+                    continue
+
+                # 429 오류가 아닌 경우: 재로그인 시도 후 실패하면 마지막 계정이면 중단
                 new_loader = instaloader_login(
                     loader_dict['username'],
                     loader_dict['password'],
                     base_download_path + "/unclassified",
                     include_videos,
                     include_reels,
-                    get_cookiefile()
+                    get_cookiefile(),
+                    rate_limit_config=rate_limit_config
                 )
                 if new_loader:
                     loaded_loaders[account_index]['loader'] = new_loader

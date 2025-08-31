@@ -27,8 +27,8 @@ from ultralytics import YOLO
 from crawling.utils import convert_webp_to_jpg, collect_image_paths, load_images_concurrently, logging
 
 # CUDA 사용 시 GPU 메모리 사용을 60%로 제한
-if torch.cuda.is_available():
-    torch.cuda.set_per_process_memory_fraction(0.6, 0)
+# if torch.cuda.is_available():
+    # torch.cuda.set_per_process_memory_fraction(0.6, 0)
 
 # ===================================================
 # 상수 및 모델 파일 경로 설정
@@ -45,8 +45,8 @@ BODY_SIZE_THRESHOLD = 0.005
 KEYPOINT_CONFIDENCE_THRESHOLD = 0.5
 
 TARGET_THROUGHPUT = 50  # 목표: 50 이미지/초
-MAX_YOLO_BATCH_SIZE = 1
-MIN_YOLO_BATCH_SIZE = 1
+MAX_YOLO_BATCH_SIZE = 4
+MIN_YOLO_BATCH_SIZE = 4
 
 DIFF_RATIO_THRESHOLD = 1.0
 MIN_DIFF_RATIO_IMPROVEMENT = 0.05

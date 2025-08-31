@@ -17,7 +17,12 @@ default_config = {
     'INCLUDE_VIDEOS': False,
     'INCLUDE_REELS': False,
     'INCLUDE_HUMAN_CLASSIFY': False,
-    'LOGIN_HISTORY': []
+    'LOGIN_HISTORY': [],
+    'LAST_DOWNLOAD_PATH': os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'download'),
+    'NON_EXISTENT_PROFILES': [],  # 존재하지 않는 프로필 목록
+    'RATE_LIMIT_MIN_SLEEP': 3.0,  # 최소 대기 시간 (초)
+    'RATE_LIMIT_MAX_SLEEP': 10.0,  # 최대 대기 시간 (초)
+    'RATE_LIMIT_MULTIPLIER': 1.5   # 대기 시간 배수
 }
 
 def load_config():
