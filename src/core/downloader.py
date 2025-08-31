@@ -9,7 +9,7 @@ import random
 from datetime import datetime
 from ..utils.file_utils import create_dir_if_not_exists, logging
 from ..utils.config import load_config, save_config
-from .profile_manager import add_non_existent_profile_id, is_profile_id_non_existent, get_profile_id_for_username
+from .profile_manager import add_non_existent_profile_id, is_profile_id_non_existent, get_profile_id_for_username, add_private_not_followed_profile_id, is_private_not_followed_profile_id
 from sqlite3 import OperationalError, connect
 from platform import system
 from glob import glob
@@ -378,7 +378,9 @@ def user_download_with_profiles(L, search_user, target, include_images, include_
             }
 
             L_content.download_profiles(**image_kwargs)
-            progress_queue.put(("term_complete", profile.username, "콘텐츠 다운로드 완료", L.context.username))
+            # username이 변경된 경우 old_username을 전달하여 검색목록에서 제거
+            completed_username = old_username if old_username != profile.username else profile.username
+            progress_queue.put(("term_complete", completed_username, "콘텐츠 다운로드 완료", L.context.username))
 
             if include_reels:
                 reels_folder = os.path.join(base_path, 'Reels', 'ID', profile.username)
@@ -399,8 +401,27 @@ def user_download_with_profiles(L, search_user, target, include_images, include_
                 if video_files:
                     progress_queue.put(("term_progress", profile.username, "동영상 이동 완료", L.context.username))
         except Exception as e:
-            print(f"{search_user} 다운로드 오류: {e}")
-            progress_queue.put(("term_error", search_user, f"콘텐츠 다운로드 오류: {e}", L.context.username))
+            error_msg = str(e)
+            print(f"{search_user} 다운로드 오류: {error_msg}")
+            
+            # "Private but not followed" 오류 감지 및 저장
+            if "Private but not followed" in error_msg:
+                # 저장된 profile-id가 있으면 해당 ID를 비공개 프로필로 저장
+                stored_profile_id = get_profile_id_for_username(search_user)
+                if stored_profile_id:
+                    add_private_not_followed_profile_id(stored_profile_id, search_user)
+                else:
+                    # profile-id가 없으면 username으로 저장 (하위 호환성)
+                    config = load_config()
+                    if search_user not in config.get('PRIVATE_NOT_FOLLOWED_PROFILES', []):
+                        config.setdefault('PRIVATE_NOT_FOLLOWED_PROFILES', []).append(search_user)
+                        save_config(config)
+                        print(f"비공개 프로필 '{search_user}'을 설정에 저장했습니다.")
+                
+                # 비공개 프로필로 저장된 경우 검색목록에서 제거
+                progress_queue.put(("term_complete", search_user, f"비공개 프로필로 저장됨: {error_msg}", L.context.username))
+            else:
+                progress_queue.put(("term_error", search_user, f"콘텐츠 다운로드 오류: {error_msg}", L.context.username))
             #raise
     download_content()
 
@@ -431,7 +452,7 @@ def crawl_and_download(search_terms, target, accounts, search_type, include_imag
         allow_duplicate (bool): 중복 다운로드 허용 여부.
     """
     print("크롤링 및 다운로드 시작...")
-    base_download_path = os.path.join(os.getcwd(), download_path)
+    base_download_path = download_path
     # 기본 다운로드 경로가 없으면 생성
     create_dir_if_not_exists(base_download_path)
     for sub in ["unclassified", "Reels", "인물", "비인물"]:
@@ -454,7 +475,7 @@ def crawl_and_download(search_terms, target, accounts, search_type, include_imag
             download_comments=False,
             save_metadata=False,
             post_metadata_txt_pattern='',
-            dirname_pattern=base_download_path + "/unclassified",
+            dirname_pattern=os.path.join(base_download_path, "unclassified"),
             max_connection_attempts=3,  # 재시도 횟수를 3회로 제한
             rate_controller=lambda context: RateController(context)
         )
@@ -472,7 +493,7 @@ def crawl_and_download(search_terms, target, accounts, search_type, include_imag
             loader = instaloader_login(
                 account['INSTAGRAM_USERNAME'],
                 account['INSTAGRAM_PASSWORD'],
-                base_download_path + "/unclassified",
+                os.path.join(base_download_path, "unclassified"),
                 include_videos,
                 include_reels,
                 get_cookiefile(),
@@ -491,7 +512,7 @@ def crawl_and_download(search_terms, target, accounts, search_type, include_imag
     account_index = 0
     total_accounts = len(loaded_loaders)
     
-    from crawling.post_processing import process_images
+    from ..processing.post_processing import process_images
     
     try:
         while account_index < total_accounts:
@@ -508,9 +529,7 @@ def crawl_and_download(search_terms, target, accounts, search_type, include_imag
                     if update_overall_progress and total_terms:
                         update_overall_progress(i, total_terms, term)
                     
-                    # 현재 프로필 진행률 초기화
-                    if update_current_progress:
-                        update_current_progress(0, 1, term)
+                    # 현재 프로필 진행률 초기화 (제거됨)
                     
                     # 예상 완료 시간 업데이트
                     if update_eta and start_time:
@@ -530,9 +549,17 @@ def crawl_and_download(search_terms, target, accounts, search_type, include_imag
                         classify_dir = os.path.join(base_download_path, 'unclassified',
                                                     'hashtag' if search_type == 'hashtag' else 'ID',
                                                     term)
-                        if os.path.isdir(classify_dir) and any(fname.lower().endswith(('.jpg', '.jpeg', '.png', '.webp'))
-                                                              for fname in os.listdir(classify_dir)):
-                            process_images(root, append_status, download_directory_var, term, current_username, search_type, stop_event, include_upscale)
+                        print(f"인물분류 체크: {term} - 디렉토리: {classify_dir}")
+                        if os.path.isdir(classify_dir):
+                            image_files = [fname for fname in os.listdir(classify_dir) if fname.lower().endswith(('.jpg', '.jpeg', '.png', '.webp'))]
+                            print(f"인물분류 체크: {term} - 이미지 파일 수: {len(image_files)}")
+                            if image_files:
+                                print(f"인물분류 시작: {term}")
+                                process_images(root, append_status, download_directory_var, term, current_username, search_type, stop_event, include_upscale, classified=False)
+                            else:
+                                print(f"인물분류 스킵: {term} - 이미지 파일 없음")
+                        else:
+                            print(f"인물분류 스킵: {term} - 디렉토리 없음")
                         if stop_event.is_set():
                             append_status("중지: 분류 중지됨.")
                             return
@@ -555,7 +582,7 @@ def crawl_and_download(search_terms, target, accounts, search_type, include_imag
                 new_loader = instaloader_login(
                     loader_dict['username'],
                     loader_dict['password'],
-                    base_download_path + "/unclassified",
+                    os.path.join(base_download_path, "unclassified"),
                     include_videos,
                     include_reels,
                     get_cookiefile(),

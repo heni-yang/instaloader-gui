@@ -60,7 +60,7 @@ def run_classification_process(python_executable, classifier_module, target_imag
         ]
         
         append_status(f"분류 프로세스 시작: {' '.join(cmd)}")
-        project_root = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
+        project_root = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
         env = os.environ.copy()
         env['PYTHONPATH'] = project_root + os.pathsep + env.get('PYTHONPATH', '')
         
@@ -125,14 +125,17 @@ def process_images(root, append_status, download_directory_var, search_term, use
     
     overall_success = True
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    parent_dir = os.path.abspath(os.path.join(script_dir, '..'))
+    parent_dir = os.path.abspath(os.path.join(script_dir, '..', '..'))
     # 파일 존재 여부는 기존 방식대로 검사 (모듈 실행과는 별개)
-    classifier_script_file = os.path.join(script_dir, 'processing', CLASSIFY_SCRIPT_NAME)
+    classifier_script_file = os.path.join(script_dir, 'yolo', CLASSIFY_SCRIPT_NAME)
     
     if os.name == 'nt':
         python_executable = os.path.join(parent_dir, 'venv', 'classify_venv', 'Scripts', 'python.exe')
     else:
         python_executable = os.path.join(parent_dir, 'venv', 'classify_venv', 'bin', 'python')
+    
+    append_status(f"분류 디버그: Python 실행 파일 경로: {python_executable}")
+    append_status(f"분류 디버그: 분류 스크립트 파일 경로: {classifier_script_file}")
     
     if not os.path.exists(python_executable):
         append_status(f"오류: 가상환경 Python 실행 파일 없음: {python_executable}")

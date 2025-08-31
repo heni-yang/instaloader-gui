@@ -14,7 +14,7 @@ from ..utils.config import load_config, save_config
 from ..core.downloader import crawl_and_download
 from ..processing.post_processing import process_images
 from ..utils.file_utils import create_dir_if_not_exists
-from ..core.profile_manager import get_non_existent_profile_ids, get_profile_id_for_username, is_profile_id_non_existent
+from ..core.profile_manager import get_non_existent_profile_ids, get_profile_id_for_username, is_profile_id_non_existent, get_private_not_followed_profile_ids, is_private_not_followed_profile_id
 
 # 모듈화된 GUI 함수들 import
 from .handlers.queue_handler import (
@@ -30,12 +30,13 @@ from .dialogs.settings import (
 from .dialogs.account_management import (
     add_account, remove_account, remove_session, save_new_account
 )
-from .dialogs.non_existent_profiles import manage_non_existent_profiles
+from .dialogs.profile_manager import manage_profiles
 
 # 프로젝트 루트 및 기본 다운로드 경로 설정
-PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
-DEFAULT_DOWNLOAD_PATH = os.path.join(PROJECT_ROOT, 'download')
-SESSION_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'sessions')
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
+DEFAULT_DOWNLOAD_PATH = os.path.join(PROJECT_ROOT, 'data', 'downloads')
+from ..utils.environment import Environment
+SESSION_DIR = Environment.SESSIONS_DIR
 
 def main_gui():
     """
@@ -336,8 +337,9 @@ def main_gui():
         sort_user_ids_by_modified_asc(user_id_listbox, append_status)
     
     # 존재하지 않는 프로필 관리 함수를 모듈에서 호출
-    def manage_non_existent_profiles_wrapper():
-        manage_non_existent_profiles(append_status)
+    def manage_profiles_wrapper():
+        """통합 프로필 관리 다이얼로그를 표시합니다."""
+        manage_profiles(append_status)
     
     sort_buttons_frame = ttk.Frame(existing_dirs_frame)
     sort_buttons_frame.grid(row=1, column=1, padx=5, pady=2, sticky='nsew')
@@ -347,35 +349,23 @@ def main_gui():
     ttk.Button(sort_buttons_frame, text="(INI) 오름차순", command=sort_user_ids_by_modified_asc_wrapper).grid(row=0, column=1, padx=5, pady=2, sticky='ew')
     ttk.Button(sort_buttons_frame, text="생성일 오름차순", command=sort_user_ids_by_creation_asc_wrapper).grid(row=1, column=0, padx=5, pady=2, sticky='ew')
     ttk.Button(existing_dirs_frame, text="새로 고침", command=load_existing_directories_wrapper, width=15).grid(row=1, column=0, pady=5)
-    
-    # 존재하지 않는 프로필 관리 버튼 추가
-    ttk.Button(existing_dirs_frame, text="존재하지 않는 프로필 관리", 
-               command=manage_non_existent_profiles_wrapper, width=20).grid(row=1, column=2, pady=5)
 
     progress_frame = ttk.Frame(root)
     progress_frame.grid(row=6, column=0, padx=10, pady=5, sticky='ew')
     progress_frame.columnconfigure(0, weight=1)
     
-    # 전체 진행률
-    overall_progress_label_var = tk.StringVar(value="전체 진행률: 0% (0/0)")
+    # 진행률
+    overall_progress_label_var = tk.StringVar(value="진행률: 0% (0/0)")
     overall_progress_label = ttk.Label(progress_frame, textvariable=overall_progress_label_var, font=('Arial', 10, 'bold'))
     overall_progress_label.grid(row=0, column=0, sticky='w', padx=10, pady=(0,2))
     overall_progress_var = tk.DoubleVar()
     overall_progress_bar = ttk.Progressbar(progress_frame, variable=overall_progress_var, maximum=100, length=400)
     overall_progress_bar.grid(row=1, column=0, sticky='ew', padx=10, pady=2)
     
-    # 현재 프로필 진행률
-    current_progress_label_var = tk.StringVar(value="현재 프로필: 대기 중...")
-    current_progress_label = ttk.Label(progress_frame, textvariable=current_progress_label_var, font=('Arial', 9))
-    current_progress_label.grid(row=2, column=0, sticky='w', padx=10, pady=(2,2))
-    current_progress_var = tk.DoubleVar()
-    current_progress_bar = ttk.Progressbar(progress_frame, variable=current_progress_var, maximum=100, length=400)
-    current_progress_bar.grid(row=3, column=0, sticky='ew', padx=10, pady=2)
-    
     # 예상 완료 시간
     eta_label_var = tk.StringVar(value="예상 완료 시간: 계산 중...")
     eta_label = ttk.Label(progress_frame, textvariable=eta_label_var, font=('Arial', 8))
-    eta_label.grid(row=4, column=0, sticky='w', padx=10, pady=(2,5))
+    eta_label.grid(row=2, column=0, sticky='w', padx=10, pady=(2,5))
     global_stop_event = threading.Event()
 
     # 설정 업데이트를 위한 전역 변수
@@ -387,30 +377,22 @@ def main_gui():
 
     # 프로그레스바 업데이트 함수들
     def update_overall_progress(current, total, current_term=""):
-        """전체 진행률 업데이트"""
+        """진행률 업데이트"""
         if total > 0:
             percentage = (current / total) * 100
             overall_progress_var.set(percentage)
-            overall_progress_label_var.set(f"전체 진행률: {percentage:.1f}% ({current}/{total})")
+            overall_progress_label_var.set(f"진행률: {percentage:.1f}% ({current}/{total})")
             if current_term:
-                overall_progress_label_var.set(f"전체 진행률: {percentage:.1f}% ({current}/{total}) - {current_term}")
+                overall_progress_label_var.set(f"진행률: {percentage:.1f}% ({current}/{total}) - {current_term}")
     
     def update_current_progress(current, total, term_name=""):
-        """현재 프로필 진행률 업데이트"""
-        if total > 0:
-            percentage = (current / total) * 100
-            current_progress_var.set(percentage)
-            current_progress_label_var.set(f"현재 프로필: {term_name} - {percentage:.1f}% ({current}/{total})")
-        else:
-            current_progress_var.set(0)
-            current_progress_label_var.set(f"현재 프로필: {term_name} - 대기 중...")
+        """현재 프로필 진행률 업데이트 (사용하지 않음)"""
+        pass
     
     def reset_progress():
         """프로그레스바 초기화"""
         overall_progress_var.set(0)
-        current_progress_var.set(0)
-        overall_progress_label_var.set("전체 진행률: 0% (0/0)")
-        current_progress_label_var.set("현재 프로필: 대기 중...")
+        overall_progress_label_var.set("진행률: 0% (0/0)")
         eta_label_var.set("예상 완료 시간: 계산 중...")
     
     def update_eta(start_time, current, total):
@@ -502,8 +484,7 @@ def main_gui():
                     append_status("중지: 재분류 중지됨.")
                     return
                 
-                # 현재 프로필 진행률 업데이트
-                update_current_progress(0, 1, f"재분류: {term}")
+                # 현재 프로필 진행률 업데이트 (제거됨)
                 
                 success = process_images(
                     root, append_status, download_directory_var,
@@ -522,7 +503,6 @@ def main_gui():
             
             append_status("모든 재분류 완료.")
             update_overall_progress(total, total, "재분류 완료")
-            update_current_progress(0, 0, "재분류 완료")
             eta_label_var.set("재분류 완료!")
             load_existing_directories_wrapper()
         threading.Thread(target=worker, daemon=True).start()
@@ -550,7 +530,7 @@ def main_gui():
         # 존재하지 않는 프로필 제외 (profile-id 기반)
         if config['LAST_SEARCH_TYPE'] == 'user':
             # config를 한 번만 로드해서 재사용
-            from crawling.profile_manager import load_profile_ids_from_stamps
+            from ..core.profile_manager import load_profile_ids_from_stamps
             
             non_existent_profile_ids = config.get('NON_EXISTENT_PROFILE_IDS', [])
             profile_ids_map = load_profile_ids_from_stamps()  # 한 번만 로드
@@ -570,9 +550,24 @@ def main_gui():
                     search_terms.remove(term)
                     excluded_terms.append(term)
             
+            # 비공개 프로필 제외 (profile-id 기반)
+            private_not_followed_profile_ids = config.get('PRIVATE_NOT_FOLLOWED_PROFILE_IDS', [])
+            for term in search_terms[:]:  # 복사본으로 반복
+                profile_id = profile_ids_map.get(term)  # 이미 로드된 맵에서 조회
+                if profile_id and profile_id in private_not_followed_profile_ids:  # config에서 직접 확인
+                    search_terms.remove(term)
+                    excluded_terms.append(term)
+            
+            # 하위 호환성을 위한 username 기반 제외 (profile-id가 없는 경우)
+            private_not_followed_profiles = config.get('PRIVATE_NOT_FOLLOWED_PROFILES', [])
+            for term in search_terms[:]:  # 복사본으로 반복
+                if term in private_not_followed_profiles:
+                    search_terms.remove(term)
+                    excluded_terms.append(term)
+            
             excluded_count = len(excluded_terms)
             if excluded_count > 0:
-                append_status(f"존재하지 않는 프로필 {excluded_count}개 제외됨: {', '.join(excluded_terms)}")
+                append_status(f"존재하지 않는 프로필 및 비공개 프로필 {excluded_count}개 제외됨: {', '.join(excluded_terms)}")
                 
                 # GUI 검색목록에서도 제외된 프로필들 제거
                 current_text = word_text.get("1.0", tk.END).strip()
@@ -584,7 +579,7 @@ def main_gui():
                     word_text.delete("1.0", tk.END)
                     if filtered_lines:
                         word_text.insert("1.0", '\n'.join(filtered_lines))
-                    append_status(f"검색목록에서 존재하지 않는 프로필 {excluded_count}개 제거됨")
+                    append_status(f"검색목록에서 제외된 프로필 {excluded_count}개 제거됨")
         
         if not search_terms:
             append_status("오류: 제외 후 유효한 검색어가 없습니다.")
@@ -682,17 +677,17 @@ def main_gui():
         button_frame.columnconfigure(i, weight=1)
     ttk.Button(button_frame, text="크롤링 시작", command=start_crawling, width=15).grid(row=0, column=0, padx=5, pady=2, sticky='ew')
     ttk.Button(button_frame, text="중지", command=stop_crawling, width=15).grid(row=0, column=1, padx=5, pady=2, sticky='ew')
-    ttk.Button(existing_dirs_frame, text="선택된 이미지 분류", command=lambda: process_images(global_stop_event), width=20).grid(row=2, column=2, padx=5, pady=2, sticky='ew')
+    ttk.Button(existing_dirs_frame, text="프로필 관리", command=manage_profiles_wrapper, width=20).grid(row=2, column=2, padx=5, pady=2, sticky='ew')
+    ttk.Button(existing_dirs_frame, text="선택된 이미지 분류", command=lambda: process_images(global_stop_event), width=20).grid(row=3, column=2, padx=5, pady=2, sticky='ew')
+    ttk.Button(existing_dirs_frame, text="분류된 이미지 재분류", command=lambda: reclassify_classified_images(global_stop_event), width=20).grid(row=4, column=2, padx=5, pady=2, sticky='ew')
 
     def on_complete(message):
         append_status(f"완료: {message}")
-        # 전체 진행률을 100%로 설정
+        # 진행률을 100%로 설정
         if 'total_terms' in globals():
             update_overall_progress(total_terms, total_terms, "완료")
         else:
             update_overall_progress(1, 1, "완료")
-        # 현재 프로필 진행률 초기화
-        update_current_progress(0, 0, "완료")
         eta_label_var.set("완료!")
         
         # 마지막 배치 업데이트 처리

@@ -132,3 +132,70 @@ def get_username_by_profile_id(profile_id):
             return username
     
     return None
+
+# 비공개 프로필 관리 함수들
+def add_private_not_followed_profile_id(profile_id, username=None):
+    """
+    비공개 프로필의 profile-id를 설정에 추가합니다.
+    
+    매개변수:
+        profile_id (str): 비공개 프로필의 profile-id
+        username (str, optional): 해당 profile-id의 username (참고용)
+    """
+    config = load_config()
+    
+    if 'PRIVATE_NOT_FOLLOWED_PROFILE_IDS' not in config:
+        config['PRIVATE_NOT_FOLLOWED_PROFILE_IDS'] = []
+    
+    if profile_id not in config['PRIVATE_NOT_FOLLOWED_PROFILE_IDS']:
+        config['PRIVATE_NOT_FOLLOWED_PROFILE_IDS'].append(profile_id)
+        save_config(config)
+        print(f"비공개 프로필 ID '{profile_id}' (username: {username})을 설정에 저장했습니다.")
+
+def is_private_not_followed_profile_id(profile_id):
+    """
+    특정 profile-id가 비공개 프로필 목록에 있는지 확인합니다.
+    
+    매개변수:
+        profile_id (str): 확인할 profile-id
+        
+    반환:
+        bool: 비공개 프로필이면 True
+    """
+    config = load_config()
+    private_ids = config.get('PRIVATE_NOT_FOLLOWED_PROFILE_IDS', [])
+    return profile_id in private_ids
+
+def get_private_not_followed_profile_ids():
+    """
+    비공개 프로필 ID 목록을 반환합니다.
+    
+    반환:
+        list: 비공개 프로필 ID 목록
+    """
+    config = load_config()
+    return config.get('PRIVATE_NOT_FOLLOWED_PROFILE_IDS', [])
+
+def remove_private_not_followed_profile_id(profile_id):
+    """
+    비공개 프로필 ID를 목록에서 제거합니다.
+    
+    매개변수:
+        profile_id (str): 제거할 profile-id
+    """
+    config = load_config()
+    private_ids = config.get('PRIVATE_NOT_FOLLOWED_PROFILE_IDS', [])
+    if profile_id in private_ids:
+        private_ids.remove(profile_id)
+        config['PRIVATE_NOT_FOLLOWED_PROFILE_IDS'] = private_ids
+        save_config(config)
+        print(f"비공개 프로필 ID '{profile_id}'가 목록에서 제거되었습니다.")
+
+def clear_private_not_followed_profile_ids():
+    """
+    비공개 프로필 ID 목록을 모두 제거합니다.
+    """
+    config = load_config()
+    config['PRIVATE_NOT_FOLLOWED_PROFILE_IDS'] = []
+    save_config(config)
+    print("비공개 프로필 ID 목록이 모두 제거되었습니다.")

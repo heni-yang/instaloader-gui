@@ -1,12 +1,12 @@
 # crawling/classifier.py
 import os
 import subprocess
-from crawling.utils import logging
+from ..utils.logger import get_processing_logger
 
 # 분류 스크립트 파일명 및 모듈 이름
 CLASSIFY_SCRIPT_NAME = 'classify_yolo.py'
 CLASSIFY_SCRIPT_REL_PATH = os.path.join('processing', CLASSIFY_SCRIPT_NAME)
-CLASSIFY_MODULE_NAME = "crawling.processing." + os.path.splitext(CLASSIFY_SCRIPT_NAME)[0]
+CLASSIFY_MODULE_NAME = "src.processing.yolo." + os.path.splitext(CLASSIFY_SCRIPT_NAME)[0]
 
 def run_classification_process(python_executable, classifier_module, target_image_dir, stop_event, append_status, search_type, search_term, download_path):
     """
@@ -100,12 +100,12 @@ def classify_images(root, append_status, download_directory_var, search_term, us
     overall_success = True
     script_dir = os.path.dirname(os.path.abspath(__file__))
     # 파일 존재 여부는 기존 방식대로 검사 (모듈 실행과는 별개)
-    classifier_script_file = os.path.join(script_dir, 'classification', CLASSIFY_SCRIPT_NAME)
+    classifier_script_file = os.path.join(script_dir, 'yolo', CLASSIFY_SCRIPT_NAME)
     
     if os.name == 'nt':
-        python_executable = os.path.join(script_dir, 'classification', 'classify_venv', 'Scripts', 'python.exe')
+        python_executable = os.path.join(script_dir, 'yolo', 'classify_venv', 'Scripts', 'python.exe')
     else:
-        python_executable = os.path.join(script_dir, 'classification', 'classify_venv', 'bin', 'python')
+        python_executable = os.path.join(script_dir, 'yolo', 'classify_venv', 'bin', 'python')
     
     if not os.path.exists(python_executable):
         append_status(f"오류: 가상환경 Python 실행 파일 없음: {python_executable}")
