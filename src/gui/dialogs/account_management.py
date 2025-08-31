@@ -127,16 +127,26 @@ def remove_session(append_status_func):
     """
     세션 파일을 제거합니다.
     """
-    session_dir = os.path.join(os.path.dirname(__file__), 'sessions')
+    from ...utils.environment import Environment
+    session_dir = Environment.SESSIONS_DIR
+    
     if os.path.exists(session_dir):
         try:
             import shutil
-            shutil.rmtree(session_dir)
-            append_status_func("세션 파일이 제거되었습니다.")
+            # 세션 디렉토리 내의 모든 .session 파일 삭제
+            session_files = [f for f in os.listdir(session_dir) if f.endswith('.session')]
+            if session_files:
+                for session_file in session_files:
+                    file_path = os.path.join(session_dir, session_file)
+                    os.remove(file_path)
+                    append_status_func(f"세션 파일 삭제됨: {session_file}")
+                append_status_func(f"총 {len(session_files)}개의 세션 파일이 제거되었습니다.")
+            else:
+                append_status_func("삭제할 세션 파일이 없습니다.")
         except Exception as e:
             append_status_func(f"세션 파일 제거 중 오류: {e}")
     else:
-        append_status_func("세션 파일이 존재하지 않습니다.")
+        append_status_func("세션 디렉토리가 존재하지 않습니다.")
 
 def save_new_account(dialog, username_var, password_var, download_path_var, accounts_listbox, loaded_accounts, append_status_func):
     """
