@@ -80,37 +80,54 @@
 
 ## 🛠️ 설치 및 설정
 
-### 사전 준비 사항
+### 🚀 빠른 시작 (권장)
 
-1. **Python 버전**: Python 3.10 이상
-2. **Git 클론**:
+1. **사전 준비 사항**:
+   - Python 3.10 이상 설치
+   - Git 클론:
+     ```bash
+     git clone https://github.com/heni-yang/instaloader-gui.git
+     cd instaloader-gui
+     ```
+
+2. **자동 설치**:
    ```bash
-   git clone https://github.com/heni-yang/instaloader-gui.git
-   cd instaloader-gui
+   # Windows
+   run_project.bat
+   
+   # 또는 직접 실행
+   python -m src.main
    ```
 
-### 의존성 설치
+   > **참고**: `run_project.bat`이 자동으로 다음 작업을 수행합니다:
+   > - 가상환경 생성 및 활성화
+   > - 필요한 의존성 설치
+   > - 모델 파일 자동 다운로드
+   > - GUI 실행
 
-1. **가상환경 생성**:
-   ```bash
-   python -m venv venv/insta_venv
-   python -m venv venv/classify_venv
-   ```
+### 🔧 수동 설치 (고급 사용자)
 
-2. **인스타그램 크롤링 의존성**:
-   ```bash
-   venv/insta_venv/Scripts/activate
-   pip install -r requirements/requirements_insta.txt
-   ```
+세부적인 제어가 필요한 경우 수동으로 설치할 수 있습니다.
 
-3. **분류/업스케일링 의존성**:
-   ```bash
-   venv/classify_venv/Scripts/activate
-   pip install -r requirements/requirements_classify.txt
-   ```
+#### 1. 가상환경 생성
+```bash
+python -m venv venv/insta_venv
+python -m venv venv/classify_venv
+```
 
-### 모델 파일
+#### 2. 인스타그램 크롤링 의존성
+```bash
+venv/insta_venv/Scripts/activate
+pip install -r requirements/requirements_insta.txt
+```
 
+#### 3. 분류/업스케일링 의존성
+```bash
+venv/classify_venv/Scripts/activate
+pip install -r requirements/requirements_classify.txt
+```
+
+#### 4. 모델 파일
 - **분류 모델**: `models/classification/` 폴더에 YOLO 모델 파일 배치
 - **업스케일링 모델**: `models/upscaling/` 폴더에 GFPGAN, RealESRGAN 모델 배치
 - **자동 다운로드**: 모델 파일이 없으면 자동으로 다운로드 시도
