@@ -54,9 +54,9 @@ set "INSTA_ENV_PATH=venv\insta_venv"
 set "CLASSIFY_ENV_PATH=venv\classify_venv"
 
 REM requirements (사용자 환경에 맞게 파일명 수정)
-set "INSTA_REQ=requirements_insta.txt"
-set "CLASSIFY_REQ=requirements_classify.txt"
-set "TORCH_REQ=requirements_torch.txt"
+set "INSTA_REQ=requirements\requirements_insta.txt"
+set "CLASSIFY_REQ=requirements\requirements_classify.txt"
+set "TORCH_REQ=requirements\requirements_torch.txt"
 
 echo.
 echo ==============================================================================
@@ -132,7 +132,7 @@ echo ===========================================================================
 if exist "%INSTA_ENV_PATH%\Scripts\python.exe" (
     echo [INFO] insta_venv 활성화 후 GUI 실행...
     call "%INSTA_ENV_PATH%\Scripts\activate.bat"
-    python -m crawling.main
+    python -m src.main
     call "%INSTA_ENV_PATH%\Scripts\deactivate.bat"
 ) else (
     echo [WARN] insta_venv가 없거나 생성 실패. 크롤링 기능을 사용할 수 없습니다.

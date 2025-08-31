@@ -1,13 +1,14 @@
-# crawling/profile_manager.py
+# src/core/profile_manager.py
 """
 Profile ID 기반으로 존재하지 않는 프로필을 관리하는 모듈
 """
 import os
 import configparser
-from crawling.config import load_config, save_config
+from ..utils.config import load_config, save_config
+from ..utils.environment import Environment
 
 # latest-stamps-images.ini 파일 경로
-STAMPS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "latest-stamps-images.ini")
+STAMPS_FILE = Environment.STAMPS_FILE
 
 def load_profile_ids_from_stamps():
     """
