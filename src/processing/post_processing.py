@@ -11,6 +11,92 @@ CLASSIFY_MODULE_NAME = "src.processing.yolo." + os.path.splitext(CLASSIFY_SCRIPT
 face_upscale = 2
 overall_scale = 2
 
+class ProcessingEnvironment:
+    """
+    분류 처리를 위한 환경 설정을 관리합니다.
+    """
+    def __init__(self):
+        self.script_dir = os.path.dirname(os.path.abspath(__file__))
+        self.parent_dir = os.path.abspath(os.path.join(self.script_dir, '..', '..'))
+        self.python_executable = self._detect_python_path()
+        self.classifier_script_file = os.path.join(self.script_dir, 'yolo', CLASSIFY_SCRIPT_NAME)
+    
+    def _detect_python_path(self):
+        """
+        가상환경의 Python 실행 파일 경로를 감지합니다.
+        """
+        if os.name == 'nt':
+            return os.path.join(self.parent_dir, 'venv', 'classify_venv', 'Scripts', 'python.exe')
+        else:
+            return os.path.join(self.parent_dir, 'venv', 'classify_venv', 'bin', 'python')
+    
+    def validate_environment(self, append_status):
+        """
+        분류 환경이 유효한지 검증합니다.
+        """
+        if not os.path.exists(self.python_executable):
+            append_status(f"오류: 가상환경 Python 실행 파일 없음: {self.python_executable}")
+            return False
+        
+        if not os.path.isfile(self.classifier_script_file):
+            append_status(f"오류: 분류 스크립트 없음: {self.classifier_script_file}")
+            return False
+        
+        return True
+
+class DirectoryManager:
+    """
+    분류 대상 디렉토리를 관리합니다.
+    """
+    @staticmethod
+    def get_target_directories(download_path, search_term, search_type, classified):
+        """
+        분류 대상 디렉토리 목록을 반환합니다.
+        """
+        target_dirs = []
+        
+        if classified:
+            target_dirs.extend(DirectoryManager._get_classified_directories(download_path, search_term, search_type))
+        else:
+            target_dirs.append(DirectoryManager._get_unclassified_directory(download_path, search_term, search_type))
+        
+        return target_dirs
+    
+    @staticmethod
+    def _get_classified_directories(download_path, search_term, search_type):
+        """
+        이미 분류된 디렉토리들을 반환합니다.
+        """
+        dirs = []
+        
+        # 인물 디렉토리
+        if search_type == "hashtag":
+            person_dir = os.path.join(download_path, '인물', f"hashtag_{search_term}")
+        else:
+            person_dir = os.path.join(download_path, '인물', f"user_{search_term}")
+        dirs.append(person_dir)
+        
+        # 비인물 디렉토리
+        if search_type == "hashtag":
+            non_person_base = os.path.join(download_path, '비인물', f"hashtag_{search_term}")
+        else:
+            non_person_base = os.path.join(download_path, '비인물', f"user_{search_term}")
+        
+        if os.path.isdir(non_person_base):
+            dirs.append(non_person_base)
+        
+        return dirs
+    
+    @staticmethod
+    def _get_unclassified_directory(download_path, search_term, search_type):
+        """
+        미분류 디렉토리를 반환합니다.
+        """
+        if search_type == "hashtag":
+            return os.path.join(download_path, 'unclassified', 'hashtag', search_term)
+        else:
+            return os.path.join(download_path, 'unclassified', 'ID', search_term)
+
 def run_upscaling(python_executable, input_image_dir, face_upscale, overall_scale):
     """
     업스케일링 스크립트를 모듈 형식으로 호출합니다 (upscaler.py).
@@ -28,7 +114,6 @@ def run_upscaling(python_executable, input_image_dir, face_upscale, overall_scal
     process = subprocess.Popen(cmd, text=True)
     process.communicate()
     return process.returncode
-
 
 def run_classification_process(python_executable, classifier_module, target_image_dir, stop_event, append_status, search_type, search_term, download_path):
     """
@@ -81,6 +166,64 @@ def run_classification_process(python_executable, classifier_module, target_imag
         append_status(f"분류 스크립트 실행 중 오류: {e}")
         return None
 
+def process_single_directory(target_image_dir, env, search_type, search_term, download_path, stop_event, append_status):
+    """
+    단일 디렉토리에 대해 분류를 실행합니다.
+    """
+    if not os.path.isdir(target_image_dir):
+        append_status(f"오류: 대상 디렉토리 없음: {target_image_dir}")
+        return False
+    
+    append_status(f"[{search_type.upper()}] {search_term} 분류 시작: {target_image_dir}")
+    
+    result = run_classification_process(
+        env.python_executable,
+        CLASSIFY_MODULE_NAME,
+        target_image_dir,
+        stop_event,
+        append_status,
+        search_type,
+        search_term,
+        download_path
+    )
+    
+    if result is None:
+        append_status("오류: 분류 프로세스 중지 또는 실행 실패")
+        return False
+    elif result == 0:
+        append_status(f"[{search_type.upper()}] {search_term} 분류 완료: {target_image_dir}")
+        return True
+    else:
+        append_status(f"[{search_type.upper()}] {search_term} 분류 오류: {target_image_dir}")
+        return False
+
+def process_upscaling(download_path, search_term, search_type, upscale, env, append_status):
+    """
+    업스케일링을 처리합니다.
+    """
+    if not upscale:
+        return True
+    
+    # 인물 디렉토리 경로 생성
+    if search_type == "hashtag":
+        person_dir = os.path.join(download_path, '인물', f"hashtag_{search_term}")
+    else:
+        person_dir = os.path.join(download_path, '인물', f"user_{search_term}")
+    
+    if not os.path.isdir(person_dir):
+        append_status(f"업스케일 스킵: 인물 디렉토리 없음 - {person_dir}")
+        return True
+    
+    append_status(f"[{search_type.upper()}] {search_term} 업스케일 시작: {person_dir}")
+    
+    ret = run_upscaling(env.python_executable, person_dir, face_upscale, overall_scale)
+    if ret == 0:
+        append_status(f"업스케일링 완료: {person_dir}")
+        return True
+    else:
+        append_status(f"업스케일링 오류: {person_dir}")
+        return False
+
 def process_images(root, append_status, download_directory_var, search_term, username, search_type, stop_event, upscale, classified=False):
     """
     지정된 디렉토리의 이미지에 대해 분류 프로세스를 실행합니다.
@@ -100,92 +243,28 @@ def process_images(root, append_status, download_directory_var, search_term, use
         bool: 전체 분류 성공 여부.
     """
     download_path = download_directory_var.get().strip()
-    target_dirs = []
     
-    if classified:
-        if search_type == "hashtag":
-            person_dir = os.path.join(download_path, '인물', f"hashtag_{search_term}")
-        else:
-            person_dir = os.path.join(download_path, '인물', f"user_{search_term}")
-        target_dirs.append(person_dir)
-        
-        if search_type == "hashtag":
-            non_person_base = os.path.join(download_path, '비인물', f"hashtag_{search_term}")
-        else:
-            non_person_base = os.path.join(download_path, '비인물', f"user_{search_term}")
-        if os.path.isdir(non_person_base):
-            target_dirs.append(non_person_base)
-        else:
-            append_status(f"오류: 비인물 디렉토리 없음: {non_person_base}")
-    else:
-        if search_type == "hashtag":
-            target_dirs.append(os.path.join(download_path, 'unclassified', 'hashtag', search_term))
-        else:
-            target_dirs.append(os.path.join(download_path, 'unclassified', 'ID', search_term))
+    # 환경 설정 및 검증
+    env = ProcessingEnvironment()
+    if not env.validate_environment(append_status):
+        return False
     
+    # 디버그 정보 출력
+    append_status(f"분류 디버그: Python 실행 파일 경로: {env.python_executable}")
+    append_status(f"분류 디버그: 분류 스크립트 파일 경로: {env.classifier_script_file}")
+    
+    # 대상 디렉토리 목록 생성
+    target_dirs = DirectoryManager.get_target_directories(download_path, search_term, search_type, classified)
+    
+    # 각 디렉토리에 대해 분류 실행
     overall_success = True
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    parent_dir = os.path.abspath(os.path.join(script_dir, '..', '..'))
-    # 파일 존재 여부는 기존 방식대로 검사 (모듈 실행과는 별개)
-    classifier_script_file = os.path.join(script_dir, 'yolo', CLASSIFY_SCRIPT_NAME)
-    
-    if os.name == 'nt':
-        python_executable = os.path.join(parent_dir, 'venv', 'classify_venv', 'Scripts', 'python.exe')
-    else:
-        python_executable = os.path.join(parent_dir, 'venv', 'classify_venv', 'bin', 'python')
-    
-    append_status(f"분류 디버그: Python 실행 파일 경로: {python_executable}")
-    append_status(f"분류 디버그: 분류 스크립트 파일 경로: {classifier_script_file}")
-    
-    if not os.path.exists(python_executable):
-        append_status(f"오류: 가상환경 Python 실행 파일 없음: {python_executable}")
-        return False
-    if not os.path.isfile(classifier_script_file):
-        append_status(f"오류: 분류 스크립트 없음: {classifier_script_file}")
-        return False
-    
     for target_image_dir in target_dirs:
-        if not os.path.isdir(target_image_dir):
-            append_status(f"오류: 대상 디렉토리 없음: {target_image_dir}")
+        if not process_single_directory(target_image_dir, env, search_type, search_term, download_path, stop_event, append_status):
             overall_success = False
-            continue
-        
-        append_status(f"[{search_type.upper()}] {search_term} 분류 시작: {target_image_dir}")
-        result = run_classification_process(
-            python_executable,
-            CLASSIFY_MODULE_NAME,
-            target_image_dir,
-            stop_event,
-            append_status,
-            search_type,
-            search_term,
-            download_path
-        )
-        
-        if result is None:
-            append_status("오류: 분류 프로세스 중지 또는 실행 실패")
+    
+    # 업스케일링 처리
+    if overall_success:
+        if not process_upscaling(download_path, search_term, search_type, upscale, env, append_status):
             overall_success = False
-        elif result == 0:
-            append_status(f"[{search_type.upper()}] {search_term} 분류 완료: {target_image_dir}")
-        else:
-            append_status(f"[{search_type.upper()}] {search_term} 분류 오류: {target_image_dir}")
-            overall_success = False
-
-    if search_type == "hashtag":
-        person_dir = os.path.join(download_path, '인물', f"hashtag_{search_term}")
-    else:
-        person_dir = os.path.join(download_path, '인물', f"user_{search_term}")
-            
-    if upscale and os.path.isdir(person_dir):
-        append_status(f"[{search_type.upper()}] {search_term} 업스케일 시작: {person_dir}")
-        # 지원하는 이미지 확장자 목록
-        supported_ext = ('.jpg', '.jpeg', '.png')
-        ret = run_upscaling(python_executable, person_dir, face_upscale, overall_scale)
-        if ret == 0:
-            append_status(f"업스케일링 완료: {person_dir}")
-        else:
-            append_status(f"업스케일링 오류: {person_dir}")
-            overall_success = False
-
     
     return overall_success

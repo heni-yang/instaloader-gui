@@ -430,7 +430,7 @@ def classify_single_image(image_path, preloaded_img, seg_result, pose_result,
             # 원본 크롭 좌표 복원
             kps[:, 0] = (kps[:, 0] - left_pad) / scale + x1
             kps[:, 1] = (kps[:, 1] - top) / scale + y1
-            pose_crop_result.keypoints.data = torch.tensor([kps])
+            pose_crop_result.keypoints.data = torch.from_numpy(np.array([kps]))
             keypoints_pose = extract_pose_keypoints(pose_crop_result)
             xs, ys = keypoints_pose[:, 0], keypoints_pose[:, 1]
             pose_bbox_cropped = (int(xs.min()), int(ys.min()), int(xs.max()), int(ys.max()))

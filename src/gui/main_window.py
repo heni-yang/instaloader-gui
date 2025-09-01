@@ -110,11 +110,7 @@ def main_gui():
         root.after(0, append)
 
     # 리스트박스 항목을 텍스트 위젯에 추가하는 함수들 (모듈에서 호출)
-    def add_items_from_listbox_wrapper(listbox, text_widget, item_label):
-        add_items_from_listbox(listbox, text_widget, item_label, append_status)
 
-    def add_all_items_from_listbox_wrapper(listbox, text_widget, item_label):
-        add_all_items_from_listbox(listbox, text_widget, item_label, append_status)
 
     # 계정 관리 함수들 (모듈에서 호출)
     account_dialog = None
@@ -186,10 +182,8 @@ def main_gui():
     upscale_checkbox_hashtag.configure(state='disabled')
 
     # 인물 분류 체크박스 값에 따라 업스케일링 체크박스 활성/비활성 제어
-    # toggle 함수들을 모듈에서 호출
-    def toggle_upscale_hashtag_wrapper(*args):
-        toggle_upscale_hashtag(include_human_classify_var_hashtag, upscale_var_hashtag, upscale_checkbox_hashtag, *args)
-    include_human_classify_var_hashtag.trace_add('write', toggle_upscale_hashtag_wrapper)
+    include_human_classify_var_hashtag.trace_add('write', 
+        lambda *args: toggle_upscale_hashtag(include_human_classify_var_hashtag, upscale_var_hashtag, upscale_checkbox_hashtag, *args))
 
 
     # 사용자 ID 검색 영역 (수정된 부분)
@@ -222,9 +216,8 @@ def main_gui():
         lambda *args: toggle_human_classify(user_id_frame, include_images_var_user, include_human_classify_var_user)
 )
     # 인물 분류 체크박스 값에 따라 업스케일링 체크박스 활성/비활성 제어
-    def toggle_upscale_user_wrapper(*args):
-        toggle_upscale_user(include_human_classify_var_user, upscale_var_user, upscale_checkbox_user, *args)
-    include_human_classify_var_user.trace_add('write', toggle_upscale_user_wrapper)
+    include_human_classify_var_user.trace_add('write', 
+        lambda *args: toggle_upscale_user(include_human_classify_var_user, upscale_var_user, upscale_checkbox_user, *args))
 
 
     allow_duplicate_var = tk.BooleanVar(value=False)
@@ -241,20 +234,16 @@ def main_gui():
     
     ttk.Label(rate_limit_frame, text="(0초: Instaloader 자동 제어, 1초 이상: 추가 대기)").grid(row=1, column=0, columnspan=2, sticky='w', padx=5, pady=2)
 
-    # toggle 함수들을 모듈에서 호출
-    def toggle_human_classify_wrapper(parent_frame, img_var, human_var):
-        toggle_human_classify(parent_frame, img_var, human_var, include_human_classify_check_hashtag, include_human_classify_check_user)
-                
     include_images_var_hashtag.trace_add('write',
-        lambda *args: toggle_human_classify_wrapper(hashtag_frame, include_images_var_hashtag, include_human_classify_var_hashtag)
+        lambda *args: toggle_human_classify(hashtag_frame, include_images_var_hashtag, include_human_classify_var_hashtag, 
+                                          include_human_classify_check_hashtag, include_human_classify_check_user)
 )                              
-    def on_search_type_change_wrapper(*args):
-        on_search_type_change(search_type_var, include_images_check_hashtag, include_videos_check_hashtag,
-                              include_human_classify_check_hashtag, include_images_var_hashtag, include_human_classify_var_hashtag,
-                              include_images_check_user, include_reels_check_user, include_human_classify_check_user,
-                              include_images_var_user, include_human_classify_var_user, hashtag_frame, user_id_frame,
-                              append_status, *args)
-    search_type_var.trace_add('write', on_search_type_change_wrapper)
+    search_type_var.trace_add('write', 
+        lambda *args: on_search_type_change(search_type_var, include_images_check_hashtag, include_videos_check_hashtag,
+                                          include_human_classify_check_hashtag, include_images_var_hashtag, include_human_classify_var_hashtag,
+                                          include_images_check_user, include_reels_check_user, include_human_classify_check_user,
+                                          include_images_var_user, include_human_classify_var_user, hashtag_frame, user_id_frame,
+                                          append_status, *args))
 
     search_frame = ttk.LabelFrame(root, text="검색 설정", padding=5)
     search_frame.grid(row=2, column=0, padx=10, pady=5, sticky='ew')
@@ -276,15 +265,13 @@ def main_gui():
     download_dir_entry.grid(row=0, column=1, sticky='ew', padx=10, pady=5)
     
     # 다운로드 디렉토리 관련 함수들을 모듈에서 호출
-    def open_download_directory_wrapper():
-        open_download_directory(download_directory_var, append_status)
 
-    def select_download_directory_main_wrapper():
-        select_download_directory_main(download_directory_var, last_download_path, loaded_accounts,
-                                      load_existing_directories, append_status)
 
-    ttk.Button(download_dir_frame, text="경로 선택", command=select_download_directory_main_wrapper, width=12).grid(row=0, column=2, padx=5, pady=5)
-    ttk.Button(download_dir_frame, text="폴더 열기", command=open_download_directory_wrapper, width=12).grid(row=0, column=3, padx=5, pady=5)
+
+    ttk.Button(download_dir_frame, text="경로 선택", 
+               command=lambda: select_download_directory_main(download_directory_var, last_download_path, loaded_accounts, load_existing_directories, append_status), width=12).grid(row=0, column=2, padx=5, pady=5)
+    ttk.Button(download_dir_frame, text="폴더 열기", 
+               command=lambda: open_download_directory(download_directory_var, append_status), width=12).grid(row=0, column=3, padx=5, pady=5)
 
     existing_dirs_frame = ttk.LabelFrame(root, text="다운로드된 프로필 목록", padding=3)
     existing_dirs_frame.grid(row=4, column=0, padx=10, pady=5, sticky='nsew')
@@ -368,34 +355,20 @@ def main_gui():
     selection_buttons_frame.columnconfigure(0, weight=1)
     selection_buttons_frame.columnconfigure(1, weight=1)
     # 추가 함수들을 모듈에서 호출
-    def add_selected_hashtags_wrapper():
-        add_items_from_listbox(hashtag_listbox, word_text, "해시태그")
-        append_status("선택된 해시태그가 검색 목록에 추가되었습니다.")
-    
-    def add_all_hashtags_wrapper():
-        add_all_items_from_listbox(hashtag_listbox, word_text, "해시태그")
-        append_status("모든 해시태그가 검색 목록에 추가되었습니다.")
-    
-    def add_selected_user_ids_wrapper():
-        add_items_from_listbox(user_id_listbox, word_text, "사용자 ID")
-        append_status("선택된 사용자 ID가 검색 목록에 추가되었습니다.")
-    
-    def add_all_user_ids_wrapper():
-        add_all_items_from_listbox(user_id_listbox, word_text, "사용자 ID")
-        append_status("모든 사용자 ID가 검색 목록에 추가되었습니다.")
+
     
     # === 그룹 1: 검색 목록 관리 ===
     ttk.Button(selection_buttons_frame, text="선택된 해시태그 추가",
-               command=add_selected_hashtags_wrapper
+               command=lambda: [add_items_from_listbox(hashtag_listbox, word_text, "해시태그", append_status), append_status("선택된 해시태그가 검색 목록에 추가되었습니다.")]
     ).grid(row=0, column=0, padx=5, pady=1, sticky='ew')
     ttk.Button(selection_buttons_frame, text="모든 해시태그 추가",
-               command=add_all_hashtags_wrapper
+               command=lambda: [add_all_items_from_listbox(hashtag_listbox, word_text, "해시태그", append_status), append_status("모든 해시태그가 검색 목록에 추가되었습니다.")]
     ).grid(row=0, column=1, padx=5, pady=1, sticky='ew')
     ttk.Button(selection_buttons_frame, text="선택된 사용자 ID 추가",
-               command=add_selected_user_ids_wrapper
+               command=lambda: [add_items_from_listbox(user_id_listbox, word_text, "사용자 ID", append_status), append_status("선택된 사용자 ID가 검색 목록에 추가되었습니다.")]
     ).grid(row=1, column=0, padx=5, pady=1, sticky='ew')
     ttk.Button(selection_buttons_frame, text="모든 사용자 ID 추가",
-               command=add_all_user_ids_wrapper
+               command=lambda: [add_all_items_from_listbox(user_id_listbox, word_text, "사용자 ID", append_status), append_status("모든 사용자 ID가 검색 목록에 추가되었습니다.")]
     ).grid(row=1, column=1, padx=5, pady=1, sticky='ew')
 
     user_ids_cached = []
@@ -458,11 +431,10 @@ def main_gui():
     user_id_search_var.trace('w', filter_user_ids)
 
     # === 그룹 2: 데이터 관리 ===
-    def delete_selected_items_wrapper():
-        delete_selected_items(hashtag_listbox, user_id_listbox, download_directory_var, append_status)
+
 
     ttk.Button(selection_buttons_frame, text="선택된 대상 삭제",
-               command=delete_selected_items_wrapper, width=15
+               command=lambda: delete_selected_items(hashtag_listbox, user_id_listbox, download_directory_var, append_status), width=15
     ).grid(row=2, column=0, columnspan=2, padx=5, pady=(5, 1), sticky='ew')
 
     # 디렉토리 로드 함수를 모듈에서 호출
@@ -486,46 +458,23 @@ def main_gui():
         if user_id_search_var.get():
             filter_user_ids()
 
-    # 정렬 함수들을 모듈에서 호출
-    def sort_user_ids_by_creation_desc_wrapper():
-        nonlocal all_user_ids
-        sort_user_ids_by_creation_desc(user_id_listbox, append_status, download_directory_var)
-        # 전체 목록 업데이트
-        all_user_ids = [user_id_listbox.get(i) for i in range(user_id_listbox.size())]
-        user_id_count_var.set(f"사용자 ID 목록 ({len(all_user_ids)}개)")
-        # 검색 필터 재적용
-        if user_id_search_var.get():
-            filter_user_ids()
-
-    def sort_user_ids_by_creation_asc_wrapper():
-        nonlocal all_user_ids
-        sort_user_ids_by_creation_asc(user_id_listbox, append_status, download_directory_var)
-        # 전체 목록 업데이트
-        all_user_ids = [user_id_listbox.get(i) for i in range(user_id_listbox.size())]
-        user_id_count_var.set(f"사용자 ID 목록 ({len(all_user_ids)}개)")
-        # 검색 필터 재적용
-        if user_id_search_var.get():
-            filter_user_ids()
-
-    def sort_user_ids_by_ini_asc_wrapper():
-        nonlocal all_user_ids
-        sort_user_ids_by_ini_asc(user_id_listbox, append_status)
-        # 전체 목록 업데이트
-        all_user_ids = [user_id_listbox.get(i) for i in range(user_id_listbox.size())]
-        user_id_count_var.set(f"사용자 ID 목록 ({len(all_user_ids)}개)")
-        # 검색 필터 재적용
-        if user_id_search_var.get():
-            filter_user_ids()
-
-    def sort_user_ids_by_ini_desc_wrapper():
-        nonlocal all_user_ids
-        sort_user_ids_by_ini_desc(user_id_listbox, append_status)
-        # 전체 목록 업데이트
-        all_user_ids = [user_id_listbox.get(i) for i in range(user_id_listbox.size())]
-        user_id_count_var.set(f"사용자 ID 목록 ({len(all_user_ids)}개)")
-        # 검색 필터 재적용
-        if user_id_search_var.get():
-            filter_user_ids()
+    # 정렬 함수들 (통합)
+    def create_sort_function(sort_func, *args):
+        def sort_wrapper():
+            nonlocal all_user_ids
+            sort_func(user_id_listbox, append_status, *args)
+            # 전체 목록 업데이트
+            all_user_ids = [user_id_listbox.get(i) for i in range(user_id_listbox.size())]
+            user_id_count_var.set(f"사용자 ID 목록 ({len(all_user_ids)}개)")
+            # 검색 필터 재적용
+            if user_id_search_var.get():
+                filter_user_ids()
+        return sort_wrapper
+    
+    sort_creation_desc = create_sort_function(sort_user_ids_by_creation_desc, download_directory_var)
+    sort_creation_asc = create_sort_function(sort_user_ids_by_creation_asc, download_directory_var)
+    sort_ini_asc = create_sort_function(sort_user_ids_by_ini_asc)
+    sort_ini_desc = create_sort_function(sort_user_ids_by_ini_desc)
     
     # 다이얼로그 창 상태 관리
     profile_dialog = None
@@ -554,10 +503,10 @@ def main_gui():
     sort_buttons_frame.grid(row=1, column=1, padx=5, pady=1, sticky='nsew')
     sort_buttons_frame.columnconfigure(0, weight=1)
     sort_buttons_frame.columnconfigure(1, weight=1)
-    ttk.Button(sort_buttons_frame, text="생성일 내림차순", command=sort_user_ids_by_creation_desc_wrapper).grid(row=0, column=0, padx=5, pady=1, sticky='ew')
-    ttk.Button(sort_buttons_frame, text="INI 내림차순", command=sort_user_ids_by_ini_desc_wrapper).grid(row=0, column=1, padx=5, pady=1, sticky='ew')
-    ttk.Button(sort_buttons_frame, text="생성일 오름차순", command=sort_user_ids_by_creation_asc_wrapper).grid(row=1, column=0, padx=5, pady=1, sticky='ew')
-    ttk.Button(sort_buttons_frame, text="INI 오름차순", command=sort_user_ids_by_ini_asc_wrapper).grid(row=1, column=1, padx=5, pady=1, sticky='ew')
+    ttk.Button(sort_buttons_frame, text="생성일 내림차순", command=sort_creation_desc).grid(row=0, column=0, padx=5, pady=1, sticky='ew')
+    ttk.Button(sort_buttons_frame, text="INI 내림차순", command=sort_ini_desc).grid(row=0, column=1, padx=5, pady=1, sticky='ew')
+    ttk.Button(sort_buttons_frame, text="생성일 오름차순", command=sort_creation_asc).grid(row=1, column=0, padx=5, pady=1, sticky='ew')
+    ttk.Button(sort_buttons_frame, text="INI 오름차순", command=sort_ini_asc).grid(row=1, column=1, padx=5, pady=1, sticky='ew')
     ttk.Button(existing_dirs_frame, text="새로 고침", command=load_existing_directories_wrapper, width=15).grid(row=1, column=0, pady=3)
 
     progress_frame = ttk.Frame(root)
@@ -719,143 +668,153 @@ def main_gui():
 
 
 
-    def start_crawling():
-        append_status("크롤링 시작됨...")
-        
-        # 프로그레스바 초기화
-        reset_progress()
-        start_time = time.time()
-        
+    # 크롤링 관련 헬퍼 함수들
+    def validate_search_terms():
+        """검색어 검증 및 파싱"""
         terms_raw = word_text.get("1.0", tk.END).strip()
         if not terms_raw:
             append_status("오류: 검색할 해시태그 또는 사용자 ID 입력 필요.")
-            return
+            return None
         
-        # 검색어 목록 생성
         search_terms = [t.strip() for t in terms_raw.replace(',', '\n').split('\n') if t.strip()]
         if not search_terms:
             append_status("오류: 유효한 검색어 없음.")
-            return
+            return None
         
-        # 존재하지 않는 프로필 제외 (profile-id 기반)
-        if config['LAST_SEARCH_TYPE'] == 'user':
-            # config를 한 번만 로드해서 재사용
-            from ..core.profile_manager import load_profile_ids_from_stamps
-            
-            non_existent_profile_ids = config.get('NON_EXISTENT_PROFILE_IDS', [])
-            profile_ids_map = load_profile_ids_from_stamps()  # 한 번만 로드
-            excluded_terms = []
-            
-            # profile-id 기반으로 제외할 프로필 찾기
-            for term in search_terms[:]:  # 복사본으로 반복
-                profile_id = profile_ids_map.get(term)  # 이미 로드된 맵에서 조회
-                if profile_id and profile_id in non_existent_profile_ids:  # config에서 직접 확인
-                    search_terms.remove(term)
-                    excluded_terms.append(term)
-            
-            # 하위 호환성을 위한 username 기반 제외 (profile-id가 없는 경우)
-            non_existent_profiles = config.get('NON_EXISTENT_PROFILES', [])
-            for term in search_terms[:]:  # 복사본으로 반복
-                if term in non_existent_profiles:
-                    search_terms.remove(term)
-                    excluded_terms.append(term)
-            
-            # 비공개 프로필 제외 (profile-id 기반)
-            private_not_followed_profile_ids = config.get('PRIVATE_NOT_FOLLOWED_PROFILE_IDS', [])
-            for term in search_terms[:]:  # 복사본으로 반복
-                profile_id = profile_ids_map.get(term)  # 이미 로드된 맵에서 조회
-                if profile_id and profile_id in private_not_followed_profile_ids:  # config에서 직접 확인
-                    search_terms.remove(term)
-                    excluded_terms.append(term)
-            
-            # 하위 호환성을 위한 username 기반 제외 (profile-id가 없는 경우)
-            private_not_followed_profiles = config.get('PRIVATE_NOT_FOLLOWED_PROFILES', [])
-            for term in search_terms[:]:  # 복사본으로 반복
-                if term in private_not_followed_profiles:
-                    search_terms.remove(term)
-                    excluded_terms.append(term)
-            
-            excluded_count = len(excluded_terms)
-            if excluded_count > 0:
-                append_status(f"존재하지 않는 프로필 및 비공개 프로필 {excluded_count}개 제외됨: {', '.join(excluded_terms)}")
-                
-                # GUI 검색목록에서도 제외된 프로필들 제거
-                current_text = word_text.get("1.0", tk.END).strip()
-                if current_text:
-                    lines = current_text.split('\n')
-                    # 제외된 프로필들을 필터링
-                    filtered_lines = [line.strip() for line in lines if line.strip() and line.strip() not in excluded_terms]
-                    # 새로운 텍스트로 업데이트
-                    word_text.delete("1.0", tk.END)
-                    if filtered_lines:
-                        word_text.insert("1.0", '\n'.join(filtered_lines))
-                    append_status(f"검색목록에서 제외된 프로필 {excluded_count}개 제거됨")
+        return search_terms
+    
+    def filter_excluded_profiles(search_terms):
+        """존재하지 않는 프로필과 비공개 프로필 제외"""
+        if config['LAST_SEARCH_TYPE'] != 'user':
+            return search_terms
         
-        if not search_terms:
-            append_status("오류: 제외 후 유효한 검색어가 없습니다.")
-            return
+        from ..core.profile_manager import load_profile_ids_from_stamps
         
-        config['SEARCH_TERMS'] = search_terms
+        non_existent_profile_ids = config.get('NON_EXISTENT_PROFILE_IDS', [])
+        profile_ids_map = load_profile_ids_from_stamps()
+        excluded_terms = []
         
-        # 전체 진행률 초기화
-        global total_terms
-        total_terms = len(search_terms)
-        update_overall_progress(0, total_terms)
+        # profile-id 기반으로 제외할 프로필 찾기
+        for term in search_terms[:]:
+            profile_id = profile_ids_map.get(term)
+            if profile_id and profile_id in non_existent_profile_ids:
+                search_terms.remove(term)
+                excluded_terms.append(term)
         
+        # 하위 호환성을 위한 username 기반 제외
+        non_existent_profiles = config.get('NON_EXISTENT_PROFILES', [])
+        for term in search_terms[:]:
+            if term in non_existent_profiles:
+                search_terms.remove(term)
+                excluded_terms.append(term)
+        
+        # 비공개 프로필 제외 (profile-id 기반)
+        private_not_followed_profile_ids = config.get('PRIVATE_NOT_FOLLOWED_PROFILE_IDS', [])
+        for term in search_terms[:]:
+            profile_id = profile_ids_map.get(term)
+            if profile_id and profile_id in private_not_followed_profile_ids:
+                search_terms.remove(term)
+                excluded_terms.append(term)
+        
+        # 하위 호환성을 위한 username 기반 제외
+        private_not_followed_profiles = config.get('PRIVATE_NOT_FOLLOWED_PROFILES', [])
+        for term in search_terms[:]:
+            if term in private_not_followed_profiles:
+                search_terms.remove(term)
+                excluded_terms.append(term)
+        
+        # 제외된 프로필 처리
+        if excluded_terms:
+            append_status(f"존재하지 않는 프로필 및 비공개 프로필 {len(excluded_terms)}개 제외됨: {', '.join(excluded_terms)}")
+            
+            # GUI 검색목록에서도 제외된 프로필들 제거
+            current_text = word_text.get("1.0", tk.END).strip()
+            if current_text:
+                lines = current_text.split('\n')
+                filtered_lines = [line.strip() for line in lines if line.strip() and line.strip() not in excluded_terms]
+                word_text.delete("1.0", tk.END)
+                if filtered_lines:
+                    word_text.insert("1.0", '\n'.join(filtered_lines))
+                append_status(f"검색목록에서 제외된 프로필 {len(excluded_terms)}개 제거됨")
+        
+        return search_terms
+    
+    def prepare_crawling_config(search_terms):
+        """크롤링 설정 준비"""
+        # 게시글 수 설정
         try:
             target = int(post_count_entry.get().strip())
             if target < 0:
                 append_status("오류: 게시글 수는 0 이상이어야 함.")
-                return
+                return None
         except ValueError:
             append_status("오류: 게시글 수는 정수여야 함.")
-            return
-        nonlocal main_search_terms, main_search_type
-        main_search_terms.clear()
-        main_search_terms.extend(config['SEARCH_TERMS'])
-        config['LAST_SEARCH_TYPE'] = search_type_var.get()
-        main_search_type = config['LAST_SEARCH_TYPE']
-        config['INCLUDE_IMAGES'] = (include_images_var_hashtag.get() if config['LAST_SEARCH_TYPE'] == "hashtag" 
-                                    else include_images_var_user.get() if include_images_var_user else False)
-        config['INCLUDE_VIDEOS'] = (include_videos_var_hashtag.get() if config['LAST_SEARCH_TYPE'] == "hashtag" else False)
-        config['INCLUDE_REELS'] = (include_reels_var_user.get() if config['LAST_SEARCH_TYPE'] == "user" else False)
-        config['INCLUDE_HUMAN_CLASSIFY'] = (
-            include_human_classify_var_hashtag.get() if config['LAST_SEARCH_TYPE'] == "hashtag"
-            else include_human_classify_var_user.get() if config['LAST_SEARCH_TYPE'] == "user" else False
-        )
-        config['INCLUDE_UPSCALE'] = (
-            upscale_var_hashtag.get() if config['LAST_SEARCH_TYPE'] == "hashtag"
-            else upscale_var_user.get() if config['LAST_SEARCH_TYPE'] == "user" else False
-        )
-        allow_duplicate = allow_duplicate_var.get()
+            return None
+        
+        # 다운로드 경로 설정
         d_path = download_directory_var.get().strip()
         if not os.path.isdir(d_path):
             create_dir_if_not_exists(d_path)
             append_status(f"다운로드 경로 생성됨: {d_path}")
-        # 요청 간 대기시간 설정 저장
+        
+        # 요청 간 대기시간 설정
         try:
             request_wait_time = float(wait_time_var.get())
             if request_wait_time < 0:
                 append_status("경고: 대기시간은 0 이상이어야 합니다. 0초로 설정합니다.")
                 request_wait_time = 0.0
             config['REQUEST_WAIT_TIME'] = request_wait_time
-            print(f"[REQUEST_WAIT_DEBUG] GUI 설정 저장됨 - 추가 대기시간: {request_wait_time}초")
         except ValueError:
             append_status("경고: 대기시간 설정이 잘못되었습니다. 0초로 설정합니다.")
             config['REQUEST_WAIT_TIME'] = 0.0
-            print(f"[REQUEST_WAIT_DEBUG] GUI 설정 오류 - 기본값 사용: 0초")
         
-        # 마지막 다운로드 경로 업데이트
+        # 설정 업데이트
+        config['SEARCH_TERMS'] = search_terms
+        config['LAST_SEARCH_TYPE'] = search_type_var.get()
+        config['INCLUDE_IMAGES'] = (include_images_var_hashtag.get() if config['LAST_SEARCH_TYPE'] == "hashtag" 
+                                    else include_images_var_user.get())
+        config['INCLUDE_VIDEOS'] = (include_videos_var_hashtag.get() if config['LAST_SEARCH_TYPE'] == "hashtag" else False)
+        config['INCLUDE_REELS'] = (include_reels_var_user.get() if config['LAST_SEARCH_TYPE'] == "user" else False)
+        config['INCLUDE_HUMAN_CLASSIFY'] = (
+            include_human_classify_var_hashtag.get() if config['LAST_SEARCH_TYPE'] == "hashtag"
+            else include_human_classify_var_user.get()
+        )
+        config['INCLUDE_UPSCALE'] = (
+            upscale_var_hashtag.get() if config['LAST_SEARCH_TYPE'] == "hashtag"
+            else upscale_var_user.get()
+        )
         config['LAST_DOWNLOAD_PATH'] = d_path
         save_config(config)
-        append_status("설정 저장됨.")
+        
+        return {
+            'target': target,
+            'download_path': d_path,
+            'allow_duplicate': allow_duplicate_var.get(),
+            'config': config
+        }
+    
+    def execute_crawling(search_terms, crawling_config):
+        """크롤링 실행"""
+        config = crawling_config['config']
+        nonlocal main_search_terms, main_search_type
+        main_search_terms.clear()
+        main_search_terms.extend(search_terms)
+        main_search_type = config['LAST_SEARCH_TYPE']
+        
+        # 전체 진행률 초기화
+        global total_terms
+        total_terms = len(search_terms)
+        update_overall_progress(0, total_terms)
+        
         q = Queue()
         global_stop_event.clear()
+        start_time = time.time()
+        
         threading.Thread(
             target=crawl_and_download,
             args=(
                 main_search_terms,
-                target,
+                crawling_config['target'],
                 loaded_accounts,
                 config['LAST_SEARCH_TYPE'],
                 config['INCLUDE_IMAGES'],
@@ -866,11 +825,11 @@ def main_gui():
                 q,
                 on_complete,
                 global_stop_event,
-                d_path,
+                crawling_config['download_path'],
                 append_status,
                 root,
                 download_directory_var,
-                allow_duplicate,
+                crawling_config['allow_duplicate'],
                 update_overall_progress,
                 update_current_progress,
                 update_eta,
@@ -880,6 +839,30 @@ def main_gui():
             daemon=True
         ).start()
         process_queue_wrapper(q)
+
+    def start_crawling():
+        """크롤링 시작 - 리팩토링된 버전"""
+        append_status("크롤링 시작됨...")
+        reset_progress()
+        
+        # 1. 검색어 검증
+        search_terms = validate_search_terms()
+        if not search_terms:
+            return
+        
+        # 2. 프로필 필터링
+        search_terms = filter_excluded_profiles(search_terms)
+        if not search_terms:
+            append_status("오류: 제외 후 유효한 검색어가 없습니다.")
+            return
+        
+        # 3. 설정 준비
+        crawling_config = prepare_crawling_config(search_terms)
+        if not crawling_config:
+            return
+        
+        # 4. 크롤링 실행
+        execute_crawling(search_terms, crawling_config)
 
     def stop_crawling():
         global_stop_event.set()
@@ -938,9 +921,11 @@ def main_gui():
     
     def initial_toggle():
         if loaded_searchtype == 'hashtag':
-            toggle_human_classify_wrapper(hashtag_frame, include_images_var_hashtag, include_human_classify_var_hashtag)
+            toggle_human_classify(hashtag_frame, include_images_var_hashtag, include_human_classify_var_hashtag, 
+                                include_human_classify_check_hashtag, include_human_classify_check_user)
         else:
-            toggle_human_classify_wrapper(user_id_frame, include_images_var_user, include_human_classify_var_user)
+            toggle_human_classify(user_id_frame, include_images_var_user, include_human_classify_var_user,
+                                include_human_classify_check_hashtag, include_human_classify_check_user)
     initial_toggle()
     
     root.rowconfigure(7, weight=1)
