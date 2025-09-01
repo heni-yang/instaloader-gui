@@ -2,12 +2,13 @@
 """
 검색 설정 패널 컴포넌트
 """
+import os
 import tkinter as tk
 from tkinter import ttk, scrolledtext
 from ..handlers.queue_handler import (
     add_items_from_listbox, add_all_items_from_listbox, 
     toggle_upscale_hashtag, toggle_upscale_user, toggle_human_classify,
-    on_search_type_change
+    on_search_type_change, open_download_directory, select_download_directory_main
 )
 from ..dialogs.settings import delete_selected_items, load_existing_directories
 from ..dialogs.settings import (
@@ -67,6 +68,9 @@ class SearchPanel:
         # 설정 저장 중 무한 루프 방지 플래그
         self._saving_config = False
         self._save_timer = None
+        
+        # 검색어 텍스트 변경 감지를 위한 변수
+        self._last_search_text = ""
     
     def create_search_type_frame(self, top_frame):
         """검색 유형 선택 프레임 생성"""
@@ -103,7 +107,7 @@ class SearchPanel:
         user_id_frame.columnconfigure(0, weight=1)
         user_id_frame.columnconfigure(1, weight=1)
         
-        ttk.Radiobutton(user_id_frame, text="사용자 ID 검색", variable=self.search_type_var, value="user")\
+        ttk.Radiobutton(user_id_frame, text="사용자 ID 검색", variable=self.search_type_var, value="user_id")\
             .grid(row=0, column=0, columnspan=2, sticky='w')
         
         # 1행: 이미지, 릴스 체크박스
@@ -148,6 +152,15 @@ class SearchPanel:
         ttk.Label(search_frame, text="검색할 해시태그 / 사용자 ID (여러 개는 개행 또는 쉼표로 구분):", wraplength=300).grid(row=0, column=0, sticky='ne', pady=2, padx=10)
         self.word_text = scrolledtext.ScrolledText(search_frame, width=50, height=5, font=('Arial', 10))
         self.word_text.grid(row=0, column=1, pady=2, padx=10, sticky='ew')
+        
+        # 저장된 검색어 로드
+        saved_search_terms = self.config.get('SEARCH_TERMS', [])
+        if saved_search_terms:
+            search_text = '\n'.join(saved_search_terms)
+            self.word_text.insert(1.0, search_text)
+            self._last_search_text = search_text
+        
+        # 검색어 텍스트 변경 이벤트 바인딩 제거 (크롤링 시작 시에만 저장)
         
         ttk.Label(search_frame, text="수집할 게시글 수 (0: 전체):").grid(row=1, column=0, sticky='e', pady=2, padx=10)
         self.post_count_entry = ttk.Entry(search_frame, width=20, font=('Arial', 10))
@@ -314,6 +327,8 @@ class SearchPanel:
         self._bind_search_events()
         
         return existing_dirs_frame
+    
+
     
     def _bind_search_events(self):
         """검색 이벤트 바인딩"""
@@ -593,9 +608,22 @@ class SearchPanel:
     def _refresh_lists(self):
         """목록 새로고침"""
         try:
+            # 다운로드 경로 확인
+            download_path = self.download_directory_var.get()
+            if not download_path or not os.path.exists(download_path):
+                print(f"다운로드 경로가 존재하지 않습니다: {download_path}")
+                return
+            
             load_existing_directories(self.hashtag_listbox, self.user_id_listbox, 
                                     self.download_directory_var, lambda x: print(f"상태: {x}"))
             self._update_count_labels()
+            
+            # 원본 데이터 초기화 (필터링을 위해)
+            self.original_hashtags = list(self.hashtag_listbox.get(0, tk.END))
+            self.original_user_ids = list(self.user_id_listbox.get(0, tk.END))
+            
+            print(f"목록 새로고침 완료: 해시태그 {len(self.original_hashtags)}개, 사용자 ID {len(self.original_user_ids)}개")
+            
         except Exception as e:
             print(f"목록 새로고침 오류: {e}")
     
@@ -676,3 +704,37 @@ class SearchPanel:
             'wait_time': float(self.wait_time_var.get()),
             'post_count': int(self.post_count_entry.get()) if self.post_count_entry.get() else 0
         }
+
+    def _on_search_text_change(self, event=None):
+        """검색어 텍스트 변경 이벤트"""
+        current_text = self.word_text.get(1.0, tk.END).strip()
+        
+        # 텍스트가 실제로 변경된 경우에만 저장
+        if current_text != self._last_search_text:
+            self._last_search_text = current_text
+            self._save_search_terms()
+    
+    def _save_search_terms(self):
+        """검색어를 config에 저장"""
+        try:
+            from ...utils.config import load_config, save_config
+            
+            config = load_config()
+            
+            # 텍스트에서 검색어 추출
+            search_text = self.word_text.get(1.0, tk.END).strip()
+            search_terms = []
+            
+            if search_text:
+                for line in search_text.split('\n'):
+                    for term in line.split(','):
+                        term = term.strip()
+                        if term:
+                            search_terms.append(term)
+            
+            # config에 저장
+            config['SEARCH_TERMS'] = search_terms
+            save_config(config)
+            
+        except Exception as e:
+            print(f"검색어 저장 오류: {e}")

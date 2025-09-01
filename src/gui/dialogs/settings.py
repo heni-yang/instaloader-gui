@@ -15,8 +15,11 @@ def delete_selected_items(hashtag_listbox, user_id_listbox, config):
     """
     선택된 해시태그와 사용자 ID와 관련된 모든 디렉토리를 삭제합니다.
     """
+    import time
+    import stat
+    
     # config에서 다운로드 경로 가져오기
-    download_directory_var = config.get('LAST_DOWNLOAD_PATH', '')
+    download_directory = config.get('LAST_DOWNLOAD_PATH', '')
     append_status_func = lambda x: print(f"상태: {x}")
     
     # 해시태그 선택 확인
@@ -44,8 +47,45 @@ def delete_selected_items(hashtag_listbox, user_id_listbox, config):
         append_status_func("삭제가 취소되었습니다.")
         return
     
-    main_download_dir = download_directory_var.get()
+    main_download_dir = download_directory
     deleted_count = 0
+    
+    def force_delete_directory(dir_path):
+        """권한 문제를 해결하여 디렉토리를 강제로 삭제합니다."""
+        if not os.path.exists(dir_path):
+            return False
+        
+        try:
+            # 파일 속성 변경 (읽기 전용 해제)
+            for root, dirs, files in os.walk(dir_path):
+                for dir_name in dirs:
+                    dir_path_full = os.path.join(root, dir_name)
+                    try:
+                        os.chmod(dir_path_full, stat.S_IWRITE)
+                    except:
+                        pass
+                
+                for file_name in files:
+                    file_path = os.path.join(root, file_name)
+                    try:
+                        os.chmod(file_path, stat.S_IWRITE)
+                    except:
+                        pass
+            
+            # 디렉토리 자체의 속성도 변경
+            try:
+                os.chmod(dir_path, stat.S_IWRITE)
+            except:
+                pass
+            
+            # 잠시 대기 후 삭제 시도
+            time.sleep(0.1)
+            shutil.rmtree(dir_path, ignore_errors=True)
+            return True
+            
+        except Exception as e:
+            append_status_func(f"경고: {dir_path} 삭제 실패 - {e}")
+            return False
     
     # 해시태그 삭제
     if selected_hashtags:
@@ -61,8 +101,7 @@ def delete_selected_items(hashtag_listbox, user_id_listbox, config):
                 ]
                 
                 for dir_path in dirs_to_delete:
-                    if os.path.exists(dir_path):
-                        shutil.rmtree(dir_path)
+                    if force_delete_directory(dir_path):
                         append_status_func(f"삭제됨: {dir_path}")
                         deleted_count += 1
                 
@@ -87,8 +126,7 @@ def delete_selected_items(hashtag_listbox, user_id_listbox, config):
                 ]
                 
                 for dir_path in dirs_to_delete:
-                    if os.path.exists(dir_path):
-                        shutil.rmtree(dir_path)
+                    if force_delete_directory(dir_path):
                         append_status_func(f"삭제됨: {dir_path}")
                         deleted_count += 1
                 

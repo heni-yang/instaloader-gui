@@ -76,6 +76,9 @@ class GUIController:
             messagebox.showwarning("경고", "모든 검색어가 제외 목록에 있습니다.")
             return
         
+        # 크롤링 시작 전 설정 저장
+        self._save_config_before_crawling()
+        
         # 크롤링 설정 준비
         crawling_config = self._prepare_crawling_config(filtered_terms)
         
@@ -181,9 +184,10 @@ class GUIController:
         search_config = self.search_panel.get_search_config()
         accounts = self.account_panel.get_accounts()
         
+        # 계정이 없으면 익명 다운로드로 진행
         if not accounts:
-            messagebox.showerror("오류", "계정을 추가해주세요.")
-            return None
+            self.status_panel.append_status("계정이 없어 익명으로 다운로드를 시도합니다.")
+            accounts = []  # 빈 리스트로 설정하여 익명 다운로드 활성화
         
         # accounts가 문자열 리스트인 경우 딕셔너리 형태로 변환
         if isinstance(accounts, list) and len(accounts) > 0 and isinstance(accounts[0], str):
@@ -237,6 +241,54 @@ class GUIController:
         }
         
         return crawling_config
+    
+    def _save_config_before_crawling(self):
+        """크롤링 시작 전 설정 저장"""
+        try:
+            # 현재 검색어를 config에 저장
+            search_text = self.search_panel.word_text.get(1.0, tk.END).strip()
+            search_terms = []
+            
+            if search_text:
+                for line in search_text.split('\n'):
+                    for term in line.split(','):
+                        term = term.strip()
+                        if term:
+                            search_terms.append(term)
+            
+            self.config['SEARCH_TERMS'] = search_terms
+            
+            # 기타 설정들도 저장
+            self.config['LAST_SEARCH_TYPE'] = self.search_panel.search_type_var.get()
+            self.config['LAST_DOWNLOAD_PATH'] = self.search_panel.download_directory_var.get()
+            self.config['ACCOUNTS'] = self.account_panel.get_accounts()
+            self.config['REQUEST_WAIT_TIME'] = float(self.search_panel.wait_time_var.get())
+            
+            # 해시태그 옵션 저장
+            self.config['HASHTAG_OPTIONS'] = {
+                'include_images': self.search_panel.include_images_var_hashtag.get(),
+                'include_videos': self.search_panel.include_videos_var_hashtag.get(),
+                'include_human_classify': self.search_panel.include_human_classify_var_hashtag.get(),
+                'include_upscale': self.search_panel.include_upscale_var_hashtag.get()
+            }
+            
+            # 사용자 ID 옵션 저장
+            self.config['USER_ID_OPTIONS'] = {
+                'include_images': self.search_panel.include_images_var_user.get(),
+                'include_reels': self.search_panel.include_reels_var_user.get(),
+                'include_human_classify': self.search_panel.include_human_classify_var_user.get(),
+                'include_upscale': self.search_panel.include_upscale_var_user.get()
+            }
+            
+            # 중복 다운로드 허용 설정 저장
+            self.config['ALLOW_DUPLICATE'] = self.search_panel.allow_duplicate_var.get()
+            
+            # 설정 파일 저장
+            save_config(self.config)
+            self.status_panel.append_status("설정이 저장되었습니다.")
+            
+        except Exception as e:
+            print(f"설정 저장 오류: {e}")
     
     def _execute_crawling(self, search_terms, crawling_config):
         """크롤링 실행"""
@@ -382,6 +434,10 @@ class GUIController:
                 updated_text = '\n'.join(terms)
                 self.search_panel.word_text.delete(1.0, tk.END)
                 self.search_panel.word_text.insert(1.0, updated_text)
+                
+                # config에서도 해당 항목 제거
+                self.config['SEARCH_TERMS'] = terms
+                save_config(self.config)
                 
                 # 상태 메시지
                 self.status_panel.append_status(f"🗑️ '{term}' 검색 목록에서 제거됨")
