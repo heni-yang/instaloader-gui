@@ -59,7 +59,7 @@ if DEBUG_ANNOTATION:
     os.makedirs(DEBUG_DIR, exist_ok=True)
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
-project_root = os.path.abspath(os.path.join(script_dir, "..", ".."))
+project_root = os.path.abspath(os.path.join(script_dir, "..", "..", ".."))
 YOLO_MODEL_NAME = "yolo11l-seg.pt"
 YOLO_POSE_MODEL_NAME = "yolo11x-pose.pt"
 WEIGHTS_PATH = os.path.join(project_root, "models", "classification", YOLO_MODEL_NAME)

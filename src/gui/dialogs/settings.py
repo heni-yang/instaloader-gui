@@ -11,10 +11,14 @@ from datetime import datetime
 import configparser
 from ...utils.config import load_config, save_config
 
-def delete_selected_items(hashtag_listbox, user_id_listbox, download_directory_var, append_status_func):
+def delete_selected_items(hashtag_listbox, user_id_listbox, config):
     """
     선택된 해시태그와 사용자 ID와 관련된 모든 디렉토리를 삭제합니다.
     """
+    # config에서 다운로드 경로 가져오기
+    download_directory_var = config.get('LAST_DOWNLOAD_PATH', '')
+    append_status_func = lambda x: print(f"상태: {x}")
+    
     # 해시태그 선택 확인
     hashtag_indices = hashtag_listbox.curselection()
     user_id_indices = user_id_listbox.curselection()
@@ -97,10 +101,13 @@ def delete_selected_items(hashtag_listbox, user_id_listbox, download_directory_v
     
     append_status_func(f"삭제 완료: {deleted_count}개의 디렉토리가 삭제되었습니다.")
 
-def load_existing_directories(hashtag_listbox, user_id_listbox, download_directory_var, append_status_func):
+def load_existing_directories(hashtag_listbox, user_id_listbox, download_directory_var, append_status_func=None):
     """
     다운로드 경로에 있는 기존 디렉토리들을 불러옵니다.
     """
+    if append_status_func is None:
+        append_status_func = lambda x: print(f"상태: {x}")
+    
     main_download_dir = download_directory_var.get()
     if not os.path.isdir(main_download_dir):
         append_status_func(f"오류: 다운로드 경로가 존재하지 않습니다: {main_download_dir}")

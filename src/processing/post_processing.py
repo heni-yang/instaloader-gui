@@ -144,7 +144,6 @@ def run_classification_process(python_executable, classifier_module, target_imag
             download_path
         ]
         
-        append_status(f"분류 프로세스 시작: {' '.join(cmd)}")
         project_root = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
         env = os.environ.copy()
         env['PYTHONPATH'] = project_root + os.pathsep + env.get('PYTHONPATH', '')
@@ -174,8 +173,6 @@ def process_single_directory(target_image_dir, env, search_type, search_term, do
         append_status(f"오류: 대상 디렉토리 없음: {target_image_dir}")
         return False
     
-    append_status(f"[{search_type.upper()}] {search_term} 분류 시작: {target_image_dir}")
-    
     result = run_classification_process(
         env.python_executable,
         CLASSIFY_MODULE_NAME,
@@ -191,10 +188,9 @@ def process_single_directory(target_image_dir, env, search_type, search_term, do
         append_status("오류: 분류 프로세스 중지 또는 실행 실패")
         return False
     elif result == 0:
-        append_status(f"[{search_type.upper()}] {search_term} 분류 완료: {target_image_dir}")
         return True
     else:
-        append_status(f"[{search_type.upper()}] {search_term} 분류 오류: {target_image_dir}")
+        append_status(f"인물분류 오류: {search_term}")
         return False
 
 def process_upscaling(download_path, search_term, search_type, upscale, env, append_status):
@@ -211,17 +207,17 @@ def process_upscaling(download_path, search_term, search_type, upscale, env, app
         person_dir = os.path.join(download_path, '인물', f"user_{search_term}")
     
     if not os.path.isdir(person_dir):
-        append_status(f"업스케일 스킵: 인물 디렉토리 없음 - {person_dir}")
+        append_status(f"업스케일 스킵: 인물 디렉토리 없음")
         return True
     
-    append_status(f"[{search_type.upper()}] {search_term} 업스케일 시작: {person_dir}")
+    append_status(f"업스케일 시작: {search_term}")
     
     ret = run_upscaling(env.python_executable, person_dir, face_upscale, overall_scale)
     if ret == 0:
-        append_status(f"업스케일링 완료: {person_dir}")
+        append_status(f"업스케일 완료: {search_term}")
         return True
     else:
-        append_status(f"업스케일링 오류: {person_dir}")
+        append_status(f"업스케일 오류: {search_term}")
         return False
 
 def process_images(root, append_status, download_directory_var, search_term, username, search_type, stop_event, upscale, classified=False):
@@ -249,9 +245,8 @@ def process_images(root, append_status, download_directory_var, search_term, use
     if not env.validate_environment(append_status):
         return False
     
-    # 디버그 정보 출력
-    append_status(f"분류 디버그: Python 실행 파일 경로: {env.python_executable}")
-    append_status(f"분류 디버그: 분류 스크립트 파일 경로: {env.classifier_script_file}")
+    # 분류 시작 메시지
+    append_status(f"{search_term} 분류 시작")
     
     # 대상 디렉토리 목록 생성
     target_dirs = DirectoryManager.get_target_directories(download_path, search_term, search_type, classified)
@@ -263,7 +258,7 @@ def process_images(root, append_status, download_directory_var, search_term, use
             overall_success = False
     
     # 업스케일링 처리
-    if overall_success:
+    if overall_success and upscale:
         if not process_upscaling(download_path, search_term, search_type, upscale, env, append_status):
             overall_success = False
     

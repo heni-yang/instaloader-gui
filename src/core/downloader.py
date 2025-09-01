@@ -65,7 +65,6 @@ def instaloader_login(username, password, download_path, include_videos=False, i
     
     # 요청 간 대기시간 설정 적용
     print(f"[REQUEST_WAIT_DEBUG] 요청 간 대기시간 설정: {request_wait_time}초")
-    print(f"[RESUME DEBUG] 기본 Resume prefix 설정: {resume_prefix}")
         
     L = instaloader.Instaloader(
         download_videos=include_videos or include_reels,
@@ -172,6 +171,14 @@ def download_posts(
 
         if target != 0 and target < total_posts:
             total_posts = target
+
+        # total_posts가 문자열인 경우 정수로 변환
+        if isinstance(total_posts, str):
+            try:
+                total_posts = int(total_posts)
+            except ValueError:
+                print(f"경고: total_posts를 정수로 변환할 수 없습니다: {total_posts}")
+                total_posts = 0
 
         if stop_event.is_set():
             print("중지 신호 감지. 다운로드 중지됨.")
@@ -286,6 +293,14 @@ def user_download_with_profiles(L, search_user, target, include_images, include_
         base_path (str): 기본 다운로드 경로.
         search_type (str): 검색 유형.
     """
+    # target이 문자열인 경우 정수로 변환
+    if isinstance(target, str):
+        try:
+            target = int(target)
+        except ValueError:
+            print(f"경고: target을 정수로 변환할 수 없습니다: {target}")
+            target = 0
+    
     def download_content():
         nonlocal search_user, base_path
         resume_prefix = None  # resume_prefix 변수를 함수 스코프에서 접근 가능하도록 선언
@@ -400,7 +415,7 @@ def user_download_with_profiles(L, search_user, target, include_images, include_
                 'post_filter': my_post_filter,
                 'raise_errors': True,
                 'latest_stamps': None if allow_duplicate else latest_stamps_images,
-                'max_count': target if target != 0 else None,
+                'max_count': int(target) if target != 0 else None,
             }
 
             # 다운로드 실행
@@ -634,14 +649,8 @@ def process_single_term(term, search_type, target, include_images, include_video
         append_status("중지: 다운로드 중지 신호 감지됨.")
         return False
     
-    # 전체 진행률 업데이트
-    if update_overall_progress and total_terms:
-        update_overall_progress(i, total_terms, term)
-    
-    # 예상 완료 시간 업데이트
-    if update_eta and start_time:
-        update_eta(start_time, i, total_terms)
-    
+    # 다운로드 시작 시 프로그레스바를 0%로 표시
+    progress_queue.put(("update_progress", 0, total_terms, term))
     progress_queue.put(("term_progress", term, "콘텐츠 다운로드 시작", L.context.username))
     
     # 다운로드 실행
@@ -654,11 +663,16 @@ def process_single_term(term, search_type, target, include_images, include_video
     
     # 다운로드 완료 후 처리
     if include_human_classify and not stop_event.is_set():
-        return process_classification(term, search_type, base_download_path, root, append_status,
+        success = process_classification(term, search_type, base_download_path, root, append_status,
                                     download_directory_var, current_username, stop_event, include_upscale, progress_queue, L)
+        if success:
+            # 인물분류 완료 후 검색 목록에서 제거
+            progress_queue.put(("remove_from_search", term, "인물분류 완료", L.context.username))
+        return success
     else:
         # 인물 분류가 체크되어 있지 않으면 다운로드 완료 후 즉시 검색 목록에서 삭제
         progress_queue.put(("term_complete", term, "다운로드 완료", L.context.username))
+        progress_queue.put(("remove_from_search", term, "다운로드 완료", L.context.username))
         return True
 
 def process_classification(term, search_type, base_download_path, root, append_status,
@@ -688,25 +702,33 @@ def process_classification(term, search_type, base_download_path, root, append_s
     classify_dir = os.path.join(base_download_path, 'unclassified',
                                 'hashtag' if search_type == 'hashtag' else 'ID',
                                 term)
-    print(f"인물분류 체크: {term} - 디렉토리: {classify_dir}")
     
     if os.path.isdir(classify_dir):
         image_files = [fname for fname in os.listdir(classify_dir) if fname.lower().endswith(('.jpg', '.jpeg', '.png', '.webp'))]
-        print(f"인물분류 체크: {term} - 이미지 파일 수: {len(image_files)}")
         
         if image_files:
-            print(f"인물분류 시작: {term}")
-            process_images(root, append_status, download_directory_var, term, current_username, search_type, stop_event, include_upscale, classified=False)
-            # 분류 완료 후 검색 목록에서 삭제
-            progress_queue.put(("term_classify_complete", term, "다운로드 및 분류 완료", L.context.username))
+            # append_status가 None인 경우 기본 함수 사용
+            if append_status is None:
+                append_status = lambda msg: print(f"[STATUS] {msg}")
+            
+            success = process_images(root, append_status, download_directory_var, term, current_username, search_type, stop_event, include_upscale, classified=False)
+            
+            if success:
+                # 분류 완료 후 검색 목록에서 삭제
+                progress_queue.put(("term_classify_complete", term, "다운로드 및 분류 완료", L.context.username))
+                progress_queue.put(("remove_from_search", term, "인물분류 완료", L.context.username))
+            
+            return success
         else:
-            print(f"인물분류 스킵: {term} - 이미지 파일 없음")
             # 이미지 파일이 없으면 다운로드 완료 후 검색 목록에서 삭제
             progress_queue.put(("term_complete", term, "다운로드 완료 (분류 스킵)", L.context.username))
+            progress_queue.put(("remove_from_search", term, "다운로드 완료", L.context.username))
+            return True
     else:
-        print(f"인물분류 스킵: {term} - 디렉토리 없음")
         # 디렉토리가 없으면 다운로드 완료 후 검색 목록에서 삭제
         progress_queue.put(("term_complete", term, "다운로드 완료 (분류 스킵)", L.context.username))
+        progress_queue.put(("remove_from_search", term, "다운로드 완료", L.context.username))
+        return True
     
     if stop_event.is_set():
         append_status("중지: 분류 중지됨.")
@@ -723,6 +745,10 @@ def crawl_and_download(search_terms, target, accounts, search_type, include_imag
     """
     print("크롤링 및 다운로드 시작...")
     
+    # append_status가 None인 경우 기본 함수 사용
+    if append_status is None:
+        append_status = lambda msg: print(f"[STATUS] {msg}")
+    
     # 환경 설정
     base_download_path = setup_download_environment(download_path)
     config = load_config()
@@ -737,9 +763,12 @@ def crawl_and_download(search_terms, target, accounts, search_type, include_imag
                          base_download_path, allow_duplicate, root, append_status, download_directory_var,
                          update_overall_progress, update_eta, start_time, total_terms, request_wait_time)
     
-    # 완료 처리
-    stop_event.clear()
-    on_complete("크롤링 완료됨.")
+    # 완료 처리 - 모든 항목이 처리된 후에만 완료 메시지 전송
+    if not stop_event.is_set():
+        stop_event.clear()
+        on_complete("크롤링 완료됨.")
+    else:
+        on_complete("크롤링 중지됨.")
 
 def create_loaders(accounts, base_download_path, include_videos, include_reels, request_wait_time):
     """
@@ -799,26 +828,29 @@ def process_all_terms(search_terms, target, search_type, include_images, include
             time.sleep(request_wait_time)
             print(f"[REQUEST_WAIT_DEBUG] 프로필 간 대기 완료")
         
-        # 진행률 업데이트
-        update_progress(i, total_terms, term, update_overall_progress, update_eta, start_time)
-        
         # 단일 검색어 처리
-        process_single_term(term, search_type, target, include_images, include_videos, include_reels,
+        success = process_single_term(term, search_type, target, include_images, include_videos, include_reels,
                            include_human_classify, include_upscale, L, current_username, progress_queue,
                            stop_event, base_download_path, allow_duplicate, root, append_status,
                            download_directory_var, i, total_terms, update_overall_progress, update_eta, start_time)
         
+        # 완료 후 진행률 업데이트
+        if success:
+            update_progress(i + 1, total_terms, term, progress_queue, start_time)
+        
         last_processed_term = term
 
-def update_progress(i, total_terms, term, update_overall_progress, update_eta, start_time):
+def update_progress(i, total_terms, term, progress_queue, start_time):
     """
     진행률을 업데이트합니다.
     """
-    if update_overall_progress and total_terms:
-        update_overall_progress(i, total_terms, term)
-    
-    if update_eta and start_time:
-        update_eta(start_time, i, total_terms)
+    if progress_queue and total_terms:
+        # 프로그레스바 업데이트 메시지 전송
+        progress_queue.put(("update_progress", i, total_terms, term))
+        
+        # ETA 업데이트 메시지 전송
+        if start_time:
+            progress_queue.put(("update_eta", start_time, i, total_terms))
 
 def handle_account_error(e, account_index, total_accounts, current_username, loaded_loaders, 
                         progress_queue, append_status, base_download_path, include_videos, include_reels, request_wait_time):

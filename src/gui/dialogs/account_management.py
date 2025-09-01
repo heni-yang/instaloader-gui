@@ -90,7 +90,7 @@ def add_account(accounts_listbox, loaded_accounts, append_status_func):
         
         # 중복 확인
         for acc in loaded_accounts:
-            if acc['INSTAGRAM_USERNAME'] == username:
+            if isinstance(acc, dict) and acc.get('INSTAGRAM_USERNAME') == username:
                 messagebox.showerror("오류", "이미 존재하는 사용자명입니다.")
                 return
         
@@ -192,24 +192,28 @@ def remove_session(append_status_func, accounts_listbox=None):
             else:
                 append_status_func(f"계정 '{selected_account}'의 세션 파일이 없습니다.")
         else:
-            # 선택된 계정이 없으면 모든 세션 파일 삭제 (기존 동작)
-            result = messagebox.askyesno("확인", "선택된 계정이 없습니다. 모든 세션 파일을 삭제하시겠습니까?")
-            if not result:
-                append_status_func("세션 삭제가 취소되었습니다.")
-                return
-                
+            # 선택된 계정이 없으면 모든 세션 파일 삭제
             session_files = [f for f in os.listdir(session_dir) if f.endswith('.session')]
+            
             if session_files:
+                deleted_count = 0
                 for session_file in session_files:
                     file_path = os.path.join(session_dir, session_file)
-                    os.remove(file_path)
-                    append_status_func(f"세션 파일 삭제됨: {session_file}")
-                append_status_func(f"총 {len(session_files)}개의 세션 파일이 제거되었습니다.")
+                    try:
+                        os.remove(file_path)
+                        append_status_func(f"세션 파일 삭제됨: {session_file}")
+                        deleted_count += 1
+                    except Exception as e:
+                        append_status_func(f"세션 파일 삭제 실패: {session_file} - {e}")
+                
+                append_status_func(f"총 {deleted_count}개의 세션 파일이 제거되었습니다.")
             else:
                 append_status_func("삭제할 세션 파일이 없습니다.")
                 
     except Exception as e:
-        append_status_func(f"세션 파일 제거 중 오류: {e}")
+        error_msg = f"세션 파일 제거 중 오류: {e}"
+        append_status_func(error_msg)
+        messagebox.showerror("오류", error_msg)
 
 def save_new_account(dialog, username_var, password_var, download_path_var, accounts_listbox, loaded_accounts, append_status_func):
     """
