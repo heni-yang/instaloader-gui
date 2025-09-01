@@ -18,6 +18,7 @@ default_config = {
     'INCLUDE_REELS': False,
     'INCLUDE_HUMAN_CLASSIFY': False,
     'LOGIN_HISTORY': [],
+    'LAST_ACCOUNT_USED': None,  # 마지막 사용된 계정 사용자명
     'LAST_DOWNLOAD_PATH': str(Environment.DOWNLOADS_DIR),
     'NON_EXISTENT_PROFILES': [],  # 존재하지 않는 프로필 목록 (username 기반, 하위 호환성)
     'NON_EXISTENT_PROFILE_IDS': [],  # 존재하지 않는 프로필 ID 목록 (profile-id 기반)

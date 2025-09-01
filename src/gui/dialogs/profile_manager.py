@@ -23,13 +23,16 @@ from ...core.profile_manager import (
 def manage_profiles(append_status_func):
     """
     통합 프로필 관리 다이얼로그를 표시합니다.
+    
+    Returns:
+        tk.Toplevel: 생성된 다이얼로그 창
     """
     dialog = tk.Toplevel()
     dialog.title("프로필 관리")
     dialog.geometry("700x500")
     dialog.resizable(True, True)
     dialog.transient()
-    dialog.grab_set()
+    # dialog.grab_set()  # 메인창 사용 가능하도록 주석 처리
     
     # 메인 프레임
     main_frame = ttk.Frame(dialog, padding="10")
@@ -310,5 +313,5 @@ def manage_profiles(append_status_func):
     refresh_non_existent_list()
     refresh_private_list()
     
-    # 다이얼로그가 닫힐 때까지 대기
-    dialog.wait_window()
+    # 다이얼로그 객체 반환 (wait_window 제거로 메인창 사용 가능)
+    return dialog

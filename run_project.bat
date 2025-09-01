@@ -134,8 +134,12 @@ if exist "%INSTA_ENV_PATH%\Scripts\python.exe" (
     call "%INSTA_ENV_PATH%\Scripts\activate.bat"
     python -m src.main
     call "%INSTA_ENV_PATH%\Scripts\deactivate.bat"
+    echo [INFO] GUI가 정상적으로 종료되었습니다.
 ) else (
     echo [WARN] insta_venv가 없거나 생성 실패. 크롤링 기능을 사용할 수 없습니다.
+    echo [ERROR] GUI를 실행할 수 없습니다.
+    pause
+    exit /b 1
 )
 
 echo.
@@ -147,5 +151,5 @@ echo [INFO] 없는 경우, 분류 기능은 비활성화됩니다.
 
 echo.
 echo [INFO] === 전체 프로젝트 완료 ===
-pause
+echo [INFO] GUI가 종료되었습니다. CMD 창도 자동으로 종료됩니다.
 exit /b 0

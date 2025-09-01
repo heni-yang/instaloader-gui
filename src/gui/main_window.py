@@ -117,14 +117,31 @@ def main_gui():
         add_all_items_from_listbox(listbox, text_widget, item_label, append_status)
 
     # 계정 관리 함수들 (모듈에서 호출)
+    account_dialog = None
+    
     def add_account_wrapper():
-        add_account(accounts_listbox, loaded_accounts, append_status)
+        nonlocal account_dialog
+        
+        # 이미 열려있는 창이 있는지 확인
+        try:
+            if account_dialog and account_dialog.winfo_exists():
+                # 기존 창을 앞으로 가져오기
+                account_dialog.lift()
+                account_dialog.focus()
+                return
+        except tk.TclError:
+            # 창이 이미 닫혀있는 경우
+            account_dialog = None
+        
+        # 새 창 생성
+        account_dialog = add_account(accounts_listbox, loaded_accounts, append_status)
+        return account_dialog
 
     def remove_account_wrapper():
         remove_account(accounts_listbox, loaded_accounts, append_status)
 
     def remove_session_wrapper():
-        remove_session(append_status)
+        remove_session(append_status, accounts_listbox)
 
     add_account_button = ttk.Button(account_buttons_frame, text="계정 추가", command=add_account_wrapper, width=8)
     add_account_button.grid(row=0, column=0, padx=5, pady=2, sticky='ew')
@@ -269,27 +286,81 @@ def main_gui():
     ttk.Button(download_dir_frame, text="경로 선택", command=select_download_directory_main_wrapper, width=12).grid(row=0, column=2, padx=5, pady=5)
     ttk.Button(download_dir_frame, text="폴더 열기", command=open_download_directory_wrapper, width=12).grid(row=0, column=3, padx=5, pady=5)
 
-    existing_dirs_frame = ttk.LabelFrame(root, text="다운로드된 프로필 목록", padding=5)
-    existing_dirs_frame.grid(row=4, column=0, padx=10, pady=10, sticky='nsew')
+    existing_dirs_frame = ttk.LabelFrame(root, text="다운로드된 프로필 목록", padding=3)
+    existing_dirs_frame.grid(row=4, column=0, padx=10, pady=5, sticky='nsew')
     for i in range(3):
         existing_dirs_frame.columnconfigure(i, weight=1)
     existing_dirs_frame.rowconfigure(0, weight=1)
     hashtag_list_frame = ttk.Frame(existing_dirs_frame)
     hashtag_list_frame.grid(row=0, column=0, padx=10, pady=5, sticky='nsew')
     hashtag_list_frame.columnconfigure(0, weight=1)
-    ttk.Label(hashtag_list_frame, text="해시태그 목록").pack(anchor='w')
-    hashtag_listbox = tk.Listbox(hashtag_list_frame, height=5, font=('Arial', 10), selectmode=tk.EXTENDED)
-    hashtag_listbox.pack(side='left', fill='both', expand=True, padx=(0,5), pady=5)
-    hashtag_scrollbar = ttk.Scrollbar(hashtag_list_frame, orient="vertical", command=hashtag_listbox.yview)
+    hashtag_list_frame.rowconfigure(2, weight=1)
+    
+    # 해시태그 제목과 개수
+    hashtag_header_frame = ttk.Frame(hashtag_list_frame)
+    hashtag_header_frame.pack(fill='x', pady=(0, 2))
+    hashtag_count_var = tk.StringVar(value="해시태그 목록 (0개)")
+    ttk.Label(hashtag_header_frame, textvariable=hashtag_count_var, font=('Arial', 10, 'bold')).pack(side='left')
+    
+    # 해시태그 검색
+    hashtag_search_var = tk.StringVar()
+    hashtag_search_entry = ttk.Entry(hashtag_list_frame, textvariable=hashtag_search_var)
+    hashtag_search_entry.pack(fill='x', pady=(0, 5))
+    hashtag_search_entry.insert(0, "해시태그 검색...")
+    
+    def on_hashtag_search_focus_in(event):
+        if hashtag_search_var.get() == "해시태그 검색...":
+            hashtag_search_entry.delete(0, tk.END)
+    
+    def on_hashtag_search_focus_out(event):
+        if not hashtag_search_var.get():
+            hashtag_search_entry.insert(0, "해시태그 검색...")
+    
+    hashtag_search_entry.bind('<FocusIn>', on_hashtag_search_focus_in)
+    hashtag_search_entry.bind('<FocusOut>', on_hashtag_search_focus_out)
+    
+    # 해시태그 리스트박스와 스크롤바
+    hashtag_listbox_frame = ttk.Frame(hashtag_list_frame)
+    hashtag_listbox_frame.pack(fill='both', expand=True)
+    hashtag_listbox = tk.Listbox(hashtag_listbox_frame, height=5, font=('Arial', 10), selectmode=tk.EXTENDED)
+    hashtag_listbox.pack(side='left', fill='both', expand=True, padx=(0,5))
+    hashtag_scrollbar = ttk.Scrollbar(hashtag_listbox_frame, orient="vertical", command=hashtag_listbox.yview)
     hashtag_scrollbar.pack(side='left', fill='y')
     hashtag_listbox.config(yscrollcommand=hashtag_scrollbar.set)
     user_id_list_frame = ttk.Frame(existing_dirs_frame)
     user_id_list_frame.grid(row=0, column=1, padx=10, pady=5, sticky='nsew')
     user_id_list_frame.columnconfigure(0, weight=1)
-    ttk.Label(user_id_list_frame, text="사용자 ID 목록").pack(anchor='w')
-    user_id_listbox = tk.Listbox(user_id_list_frame, height=5, font=('Arial', 10), selectmode=tk.EXTENDED)
-    user_id_listbox.pack(side='left', fill='both', expand=True, padx=(0,5), pady=5)
-    user_id_scrollbar = ttk.Scrollbar(user_id_list_frame, orient="vertical", command=user_id_listbox.yview)
+    user_id_list_frame.rowconfigure(2, weight=1)
+    
+    # 사용자 ID 제목과 개수
+    user_id_header_frame = ttk.Frame(user_id_list_frame)
+    user_id_header_frame.pack(fill='x', pady=(0, 2))
+    user_id_count_var = tk.StringVar(value="사용자 ID 목록 (0개)")
+    ttk.Label(user_id_header_frame, textvariable=user_id_count_var, font=('Arial', 10, 'bold')).pack(side='left')
+    
+    # 사용자 ID 검색
+    user_id_search_var = tk.StringVar()
+    user_id_search_entry = ttk.Entry(user_id_list_frame, textvariable=user_id_search_var)
+    user_id_search_entry.pack(fill='x', pady=(0, 5))
+    user_id_search_entry.insert(0, "사용자 ID 검색...")
+    
+    def on_user_id_search_focus_in(event):
+        if user_id_search_var.get() == "사용자 ID 검색...":
+            user_id_search_entry.delete(0, tk.END)
+    
+    def on_user_id_search_focus_out(event):
+        if not user_id_search_var.get():
+            user_id_search_entry.insert(0, "사용자 ID 검색...")
+    
+    user_id_search_entry.bind('<FocusIn>', on_user_id_search_focus_in)
+    user_id_search_entry.bind('<FocusOut>', on_user_id_search_focus_out)
+    
+    # 사용자 ID 리스트박스와 스크롤바
+    user_id_listbox_frame = ttk.Frame(user_id_list_frame)
+    user_id_listbox_frame.pack(fill='both', expand=True)
+    user_id_listbox = tk.Listbox(user_id_listbox_frame, height=5, font=('Arial', 10), selectmode=tk.EXTENDED)
+    user_id_listbox.pack(side='left', fill='both', expand=True, padx=(0,5))
+    user_id_scrollbar = ttk.Scrollbar(user_id_listbox_frame, orient="vertical", command=user_id_listbox.yview)
     user_id_scrollbar.pack(side='left', fill='y')
     user_id_listbox.config(yscrollcommand=user_id_scrollbar.set)
     selection_buttons_frame = ttk.Frame(existing_dirs_frame)
@@ -313,61 +384,181 @@ def main_gui():
         add_all_items_from_listbox(user_id_listbox, word_text, "사용자 ID")
         append_status("모든 사용자 ID가 검색 목록에 추가되었습니다.")
     
+    # === 그룹 1: 검색 목록 관리 ===
     ttk.Button(selection_buttons_frame, text="선택된 해시태그 추가",
                command=add_selected_hashtags_wrapper
-    ).grid(row=0, column=0, padx=5, pady=2, sticky='ew')
+    ).grid(row=0, column=0, padx=5, pady=1, sticky='ew')
     ttk.Button(selection_buttons_frame, text="모든 해시태그 추가",
                command=add_all_hashtags_wrapper
-    ).grid(row=0, column=1, padx=5, pady=2, sticky='ew')
+    ).grid(row=0, column=1, padx=5, pady=1, sticky='ew')
     ttk.Button(selection_buttons_frame, text="선택된 사용자 ID 추가",
                command=add_selected_user_ids_wrapper
-    ).grid(row=1, column=0, padx=5, pady=2, sticky='ew')
+    ).grid(row=1, column=0, padx=5, pady=1, sticky='ew')
     ttk.Button(selection_buttons_frame, text="모든 사용자 ID 추가",
                command=add_all_user_ids_wrapper
-    ).grid(row=1, column=1, padx=5, pady=2, sticky='ew')
+    ).grid(row=1, column=1, padx=5, pady=1, sticky='ew')
 
     user_ids_cached = []
+    
+    # 전체 목록을 저장할 변수들 (검색 필터링용)
+    all_hashtags = []
+    all_user_ids = []
+    
+    # 검색 기능 구현
+    def filter_hashtags(*args):
+        """해시태그 검색 필터링"""
+        search_term = hashtag_search_var.get()
+        
+        # placeholder 텍스트인 경우 전체 표시
+        if search_term == "해시태그 검색..." or not search_term:
+            hashtag_listbox.delete(0, tk.END)
+            for hashtag in all_hashtags:
+                hashtag_listbox.insert(tk.END, hashtag)
+            hashtag_count_var.set(f"해시태그 목록 ({len(all_hashtags)}개)")
+            return
+        
+        search_term = search_term.lower()
+        hashtag_listbox.delete(0, tk.END)
+        
+        filtered_hashtags = []
+        for hashtag in all_hashtags:
+            if search_term in hashtag.lower():
+                filtered_hashtags.append(hashtag)
+                hashtag_listbox.insert(tk.END, hashtag)
+        
+        # 개수 업데이트
+        hashtag_count_var.set(f"해시태그 목록 ({len(filtered_hashtags)}개)")
+    
+    def filter_user_ids(*args):
+        """사용자 ID 검색 필터링"""
+        search_term = user_id_search_var.get()
+        
+        # placeholder 텍스트인 경우 전체 표시
+        if search_term == "사용자 ID 검색..." or not search_term:
+            user_id_listbox.delete(0, tk.END)
+            for user_id in all_user_ids:
+                user_id_listbox.insert(tk.END, user_id)
+            user_id_count_var.set(f"사용자 ID 목록 ({len(all_user_ids)}개)")
+            return
+        
+        search_term = search_term.lower()
+        user_id_listbox.delete(0, tk.END)
+        
+        filtered_user_ids = []
+        for user_id in all_user_ids:
+            if search_term in user_id.lower():
+                filtered_user_ids.append(user_id)
+                user_id_listbox.insert(tk.END, user_id)
+        
+        # 개수 업데이트
+        user_id_count_var.set(f"사용자 ID 목록 ({len(filtered_user_ids)}개)")
+    
+    # 검색 이벤트 바인딩
+    hashtag_search_var.trace('w', filter_hashtags)
+    user_id_search_var.trace('w', filter_user_ids)
 
-    # 삭제 함수를 모듈에서 호출
+    # === 그룹 2: 데이터 관리 ===
     def delete_selected_items_wrapper():
         delete_selected_items(hashtag_listbox, user_id_listbox, download_directory_var, append_status)
 
-    # 삭제 버튼 추가
     ttk.Button(selection_buttons_frame, text="선택된 대상 삭제",
                command=delete_selected_items_wrapper, width=15
-    ).grid(row=2, column=0, columnspan=2, padx=5, pady=2, sticky='ew')
+    ).grid(row=2, column=0, columnspan=2, padx=5, pady=(5, 1), sticky='ew')
 
     # 디렉토리 로드 함수를 모듈에서 호출
     def load_existing_directories_wrapper():
+        nonlocal all_hashtags, all_user_ids
+        
+        # 기존 로드 함수 호출
         load_existing_directories(hashtag_listbox, user_id_listbox, download_directory_var, append_status)
+        
+        # 전체 목록 업데이트
+        all_hashtags = [hashtag_listbox.get(i) for i in range(hashtag_listbox.size())]
+        all_user_ids = [user_id_listbox.get(i) for i in range(user_id_listbox.size())]
+        
+        # 개수 업데이트
+        hashtag_count_var.set(f"해시태그 목록 ({len(all_hashtags)}개)")
+        user_id_count_var.set(f"사용자 ID 목록 ({len(all_user_ids)}개)")
+        
+        # 검색 필터 재적용 (검색어가 있는 경우)
+        if hashtag_search_var.get():
+            filter_hashtags()
+        if user_id_search_var.get():
+            filter_user_ids()
 
     # 정렬 함수들을 모듈에서 호출
     def sort_user_ids_by_creation_desc_wrapper():
+        nonlocal all_user_ids
         sort_user_ids_by_creation_desc(user_id_listbox, append_status, download_directory_var)
+        # 전체 목록 업데이트
+        all_user_ids = [user_id_listbox.get(i) for i in range(user_id_listbox.size())]
+        user_id_count_var.set(f"사용자 ID 목록 ({len(all_user_ids)}개)")
+        # 검색 필터 재적용
+        if user_id_search_var.get():
+            filter_user_ids()
 
     def sort_user_ids_by_creation_asc_wrapper():
+        nonlocal all_user_ids
         sort_user_ids_by_creation_asc(user_id_listbox, append_status, download_directory_var)
+        # 전체 목록 업데이트
+        all_user_ids = [user_id_listbox.get(i) for i in range(user_id_listbox.size())]
+        user_id_count_var.set(f"사용자 ID 목록 ({len(all_user_ids)}개)")
+        # 검색 필터 재적용
+        if user_id_search_var.get():
+            filter_user_ids()
 
     def sort_user_ids_by_ini_asc_wrapper():
+        nonlocal all_user_ids
         sort_user_ids_by_ini_asc(user_id_listbox, append_status)
+        # 전체 목록 업데이트
+        all_user_ids = [user_id_listbox.get(i) for i in range(user_id_listbox.size())]
+        user_id_count_var.set(f"사용자 ID 목록 ({len(all_user_ids)}개)")
+        # 검색 필터 재적용
+        if user_id_search_var.get():
+            filter_user_ids()
 
     def sort_user_ids_by_ini_desc_wrapper():
+        nonlocal all_user_ids
         sort_user_ids_by_ini_desc(user_id_listbox, append_status)
+        # 전체 목록 업데이트
+        all_user_ids = [user_id_listbox.get(i) for i in range(user_id_listbox.size())]
+        user_id_count_var.set(f"사용자 ID 목록 ({len(all_user_ids)}개)")
+        # 검색 필터 재적용
+        if user_id_search_var.get():
+            filter_user_ids()
+    
+    # 다이얼로그 창 상태 관리
+    profile_dialog = None
     
     # 존재하지 않는 프로필 관리 함수를 모듈에서 호출
     def manage_profiles_wrapper():
         """통합 프로필 관리 다이얼로그를 표시합니다."""
-        manage_profiles(append_status)
+        nonlocal profile_dialog
+        
+        # 이미 열려있는 창이 있는지 확인
+        try:
+            if profile_dialog and profile_dialog.winfo_exists():
+                # 기존 창을 앞으로 가져오기
+                profile_dialog.lift()
+                profile_dialog.focus()
+                return
+        except tk.TclError:
+            # 창이 이미 닫혀있는 경우
+            profile_dialog = None
+        
+        # 새 창 생성
+        profile_dialog = manage_profiles(append_status)
+        return profile_dialog
     
     sort_buttons_frame = ttk.Frame(existing_dirs_frame)
-    sort_buttons_frame.grid(row=1, column=1, padx=5, pady=2, sticky='nsew')
+    sort_buttons_frame.grid(row=1, column=1, padx=5, pady=1, sticky='nsew')
     sort_buttons_frame.columnconfigure(0, weight=1)
     sort_buttons_frame.columnconfigure(1, weight=1)
-    ttk.Button(sort_buttons_frame, text="생성일 내림차순", command=sort_user_ids_by_creation_desc_wrapper).grid(row=0, column=0, padx=5, pady=2, sticky='ew')
-    ttk.Button(sort_buttons_frame, text="INI 내림차순", command=sort_user_ids_by_ini_desc_wrapper).grid(row=0, column=1, padx=5, pady=2, sticky='ew')
-    ttk.Button(sort_buttons_frame, text="생성일 오름차순", command=sort_user_ids_by_creation_asc_wrapper).grid(row=1, column=0, padx=5, pady=2, sticky='ew')
-    ttk.Button(sort_buttons_frame, text="INI 오름차순", command=sort_user_ids_by_ini_asc_wrapper).grid(row=1, column=1, padx=5, pady=2, sticky='ew')
-    ttk.Button(existing_dirs_frame, text="새로 고침", command=load_existing_directories_wrapper, width=15).grid(row=1, column=0, pady=5)
+    ttk.Button(sort_buttons_frame, text="생성일 내림차순", command=sort_user_ids_by_creation_desc_wrapper).grid(row=0, column=0, padx=5, pady=1, sticky='ew')
+    ttk.Button(sort_buttons_frame, text="INI 내림차순", command=sort_user_ids_by_ini_desc_wrapper).grid(row=0, column=1, padx=5, pady=1, sticky='ew')
+    ttk.Button(sort_buttons_frame, text="생성일 오름차순", command=sort_user_ids_by_creation_asc_wrapper).grid(row=1, column=0, padx=5, pady=1, sticky='ew')
+    ttk.Button(sort_buttons_frame, text="INI 오름차순", command=sort_user_ids_by_ini_asc_wrapper).grid(row=1, column=1, padx=5, pady=1, sticky='ew')
+    ttk.Button(existing_dirs_frame, text="새로 고침", command=load_existing_directories_wrapper, width=15).grid(row=1, column=0, pady=3)
 
     progress_frame = ttk.Frame(root)
     progress_frame.grid(row=6, column=0, padx=10, pady=5, sticky='ew')
@@ -526,7 +717,7 @@ def main_gui():
             load_existing_directories_wrapper()
         threading.Thread(target=worker, daemon=True).start()
 
-    ttk.Button(existing_dirs_frame, text="분류된 이미지 재분류", command=lambda: reclassify_classified_images(global_stop_event), width=20).grid(row=3, column=2, padx=5, pady=2, sticky='ew')
+
 
     def start_crawling():
         append_status("크롤링 시작됨...")
@@ -700,9 +891,11 @@ def main_gui():
         button_frame.columnconfigure(i, weight=1)
     ttk.Button(button_frame, text="크롤링 시작", command=start_crawling, width=15).grid(row=0, column=0, padx=5, pady=2, sticky='ew')
     ttk.Button(button_frame, text="중지", command=stop_crawling, width=15).grid(row=0, column=1, padx=5, pady=2, sticky='ew')
-    ttk.Button(existing_dirs_frame, text="프로필 관리", command=manage_profiles_wrapper, width=20).grid(row=2, column=2, padx=5, pady=2, sticky='ew')
-    ttk.Button(existing_dirs_frame, text="선택된 이미지 분류", command=lambda: process_images(global_stop_event), width=20).grid(row=3, column=2, padx=5, pady=2, sticky='ew')
-    ttk.Button(existing_dirs_frame, text="분류된 이미지 재분류", command=lambda: reclassify_classified_images(global_stop_event), width=20).grid(row=4, column=2, padx=5, pady=2, sticky='ew')
+    ttk.Button(selection_buttons_frame, text="프로필 관리", command=manage_profiles_wrapper, width=20).grid(row=3, column=0, columnspan=2, padx=5, pady=1, sticky='ew')
+    
+    # === 그룹 3: 이미지 처리 ===
+    ttk.Button(selection_buttons_frame, text="선택된 이미지 분류", command=lambda: process_images(global_stop_event), width=20).grid(row=4, column=0, columnspan=2, padx=5, pady=(5, 1), sticky='ew')
+    ttk.Button(selection_buttons_frame, text="분류된 이미지 재분류", command=lambda: reclassify_classified_images(global_stop_event), width=20).grid(row=5, column=0, columnspan=2, padx=5, pady=1, sticky='ew')
 
     def on_complete(message):
         append_status(f"완료: {message}")
@@ -723,6 +916,16 @@ def main_gui():
         for account in config['ACCOUNTS']:
             accounts_listbox.insert(tk.END, account['INSTAGRAM_USERNAME'])
         append_status("저장된 계정 자동 입력됨.")
+        
+        # 마지막 사용된 계정 자동 선택
+        last_account_used = config.get('LAST_ACCOUNT_USED')
+        if last_account_used:
+            for i in range(accounts_listbox.size()):
+                if accounts_listbox.get(i) == last_account_used:
+                    accounts_listbox.selection_set(i)
+                    accounts_listbox.see(i)
+                    append_status(f"마지막 사용 계정 자동 선택됨: {last_account_used}")
+                    break
     if config['LAST_SEARCH_TYPE']:
         search_type_var.set(config['LAST_SEARCH_TYPE'])
     if config['LAST_SEARCH_TYPE'] == "hashtag":

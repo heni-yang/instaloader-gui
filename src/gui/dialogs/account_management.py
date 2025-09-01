@@ -11,12 +11,17 @@ from ...utils.config import load_config, save_config
 def add_account(accounts_listbox, loaded_accounts, append_status_func):
     """
     계정을 추가합니다.
+    
+    Returns:
+        tk.Toplevel: 생성된 다이얼로그 창
     """
+    from ...utils.config import load_config, save_config
+    
     dialog = tk.Toplevel()
     dialog.title("계정 추가")
-    dialog.geometry("400x300")
+    dialog.geometry("500x400")
     dialog.transient()
-    dialog.grab_set()
+    # dialog.grab_set()  # 메인창 사용 가능하도록 주석 처리
     
     # 중앙 정렬
     dialog.columnconfigure(0, weight=1)
@@ -26,11 +31,16 @@ def add_account(accounts_listbox, loaded_accounts, append_status_func):
     main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
     main_frame.columnconfigure(1, weight=1)
     
-    # 사용자명
+    # 로그인 히스토리에서 기존 계정 정보 로드
+    config = load_config()
+    login_history = config.get('LOGIN_HISTORY', [])
+    
+    # 사용자명 (콤보박스로 변경하여 히스토리 표시)
     ttk.Label(main_frame, text="인스타그램 사용자명:").grid(row=0, column=0, sticky=tk.W, pady=5)
     username_var = tk.StringVar()
-    username_entry = ttk.Entry(main_frame, textvariable=username_var)
-    username_entry.grid(row=0, column=1, sticky=(tk.W, tk.E), pady=5, padx=(10, 0))
+    username_history = [hist['username'] for hist in login_history]
+    username_combo = ttk.Combobox(main_frame, textvariable=username_var, values=username_history, state="normal")
+    username_combo.grid(row=0, column=1, sticky=(tk.W, tk.E), pady=5, padx=(10, 0))
     
     # 비밀번호
     ttk.Label(main_frame, text="비밀번호:").grid(row=1, column=0, sticky=tk.W, pady=5)
@@ -43,6 +53,18 @@ def add_account(accounts_listbox, loaded_accounts, append_status_func):
     download_path_var = tk.StringVar()
     download_path_entry = ttk.Entry(main_frame, textvariable=download_path_var)
     download_path_entry.grid(row=2, column=1, sticky=(tk.W, tk.E), pady=5, padx=(10, 0))
+    
+    # 사용자명 선택 시 자동 완성 기능
+    def on_username_select(event=None):
+        selected_username = username_var.get()
+        for hist in login_history:
+            if hist['username'] == selected_username:
+                password_var.set(hist['password'])
+                download_path_var.set(hist['download_path'])
+                break
+    
+    username_combo.bind('<<ComboboxSelected>>', on_username_select)
+    username_combo.bind('<KeyRelease>', lambda e: dialog.after(100, on_username_select) if username_var.get() in username_history else None)
     
     # 경로 선택 버튼
     def select_path():
@@ -83,9 +105,23 @@ def add_account(accounts_listbox, loaded_accounts, append_status_func):
         # 리스트박스에 추가
         accounts_listbox.insert(tk.END, username)
         
-        # 설정 저장
+        # 설정 저장 및 LOGIN_HISTORY 업데이트
         config = load_config()
         config['ACCOUNTS'] = loaded_accounts
+        
+        # LOGIN_HISTORY에 추가 (중복 제거)
+        login_history = config.get('LOGIN_HISTORY', [])
+        # 기존 항목 제거 (중복 방지)
+        login_history = [hist for hist in login_history if hist['username'] != username]
+        # 새 항목을 맨 앞에 추가
+        login_history.insert(0, {
+            'username': username,
+            'password': password,
+            'download_path': download_path
+        })
+        # 최대 10개까지만 유지
+        config['LOGIN_HISTORY'] = login_history[:10]
+        
         save_config(config)
         
         append_status_func(f"계정 추가됨: {username}")
@@ -94,7 +130,10 @@ def add_account(accounts_listbox, loaded_accounts, append_status_func):
     ttk.Button(main_frame, text="저장", command=save).grid(row=3, column=0, columnspan=3, pady=20)
     
     # 포커스 설정
-    username_entry.focus()
+    username_combo.focus()
+    
+    # 다이얼로그 객체 반환
+    return dialog
 
 def remove_account(accounts_listbox, loaded_accounts, append_status_func):
     """
@@ -123,17 +162,42 @@ def remove_account(accounts_listbox, loaded_accounts, append_status_func):
     
     append_status_func(f"계정 제거됨: {username}")
 
-def remove_session(append_status_func):
+def remove_session(append_status_func, accounts_listbox=None):
     """
-    세션 파일을 제거합니다.
+    선택된 계정의 세션 파일을 제거하거나, 선택된 계정이 없으면 모든 세션 파일을 제거합니다.
     """
     from ...utils.environment import Environment
     session_dir = Environment.SESSIONS_DIR
     
-    if os.path.exists(session_dir):
-        try:
-            import shutil
-            # 세션 디렉토리 내의 모든 .session 파일 삭제
+    if not os.path.exists(session_dir):
+        append_status_func("세션 디렉토리가 존재하지 않습니다.")
+        return
+    
+    try:
+        # 계정이 선택되었는지 확인
+        selected_account = None
+        if accounts_listbox:
+            selection = accounts_listbox.curselection()
+            if selection:
+                selected_account = accounts_listbox.get(selection[0])
+        
+        if selected_account:
+            # 선택된 계정의 세션 파일만 삭제
+            session_file = f"{selected_account}.session"
+            session_path = os.path.join(session_dir, session_file)
+            
+            if os.path.exists(session_path):
+                os.remove(session_path)
+                append_status_func(f"세션 파일 삭제됨: {session_file}")
+            else:
+                append_status_func(f"계정 '{selected_account}'의 세션 파일이 없습니다.")
+        else:
+            # 선택된 계정이 없으면 모든 세션 파일 삭제 (기존 동작)
+            result = messagebox.askyesno("확인", "선택된 계정이 없습니다. 모든 세션 파일을 삭제하시겠습니까?")
+            if not result:
+                append_status_func("세션 삭제가 취소되었습니다.")
+                return
+                
             session_files = [f for f in os.listdir(session_dir) if f.endswith('.session')]
             if session_files:
                 for session_file in session_files:
@@ -143,10 +207,9 @@ def remove_session(append_status_func):
                 append_status_func(f"총 {len(session_files)}개의 세션 파일이 제거되었습니다.")
             else:
                 append_status_func("삭제할 세션 파일이 없습니다.")
-        except Exception as e:
-            append_status_func(f"세션 파일 제거 중 오류: {e}")
-    else:
-        append_status_func("세션 디렉토리가 존재하지 않습니다.")
+                
+    except Exception as e:
+        append_status_func(f"세션 파일 제거 중 오류: {e}")
 
 def save_new_account(dialog, username_var, password_var, download_path_var, accounts_listbox, loaded_accounts, append_status_func):
     """
@@ -181,9 +244,23 @@ def save_new_account(dialog, username_var, password_var, download_path_var, acco
     # 리스트박스에 추가
     accounts_listbox.insert(tk.END, username)
     
-    # 설정 저장
+    # 설정 저장 및 LOGIN_HISTORY 업데이트
     config = load_config()
     config['ACCOUNTS'] = loaded_accounts
+    
+    # LOGIN_HISTORY에 추가 (중복 제거)
+    login_history = config.get('LOGIN_HISTORY', [])
+    # 기존 항목 제거 (중복 방지)
+    login_history = [hist for hist in login_history if hist['username'] != username]
+    # 새 항목을 맨 앞에 추가
+    login_history.insert(0, {
+        'username': username,
+        'password': password,
+        'download_path': download_path
+    })
+    # 최대 10개까지만 유지
+    config['LOGIN_HISTORY'] = login_history[:10]
+    
     save_config(config)
     
     append_status_func(f"계정 추가됨: {username}")

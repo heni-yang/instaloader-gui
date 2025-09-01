@@ -534,6 +534,25 @@ def crawl_and_download(search_terms, target, accounts, search_type, include_imag
                     'password': account['INSTAGRAM_PASSWORD'],
                     'active': True
                 })
+                
+                # 로그인 성공 시 LAST_ACCOUNT_USED 업데이트 및 LOGIN_HISTORY 갱신
+                config = load_config()
+                config['LAST_ACCOUNT_USED'] = account['INSTAGRAM_USERNAME']
+                
+                # LOGIN_HISTORY 업데이트 (최근 사용한 계정을 맨 앞으로)
+                login_history = config.get('LOGIN_HISTORY', [])
+                # 기존 항목 제거 (중복 방지)
+                login_history = [hist for hist in login_history if hist['username'] != account['INSTAGRAM_USERNAME']]
+                # 새 항목을 맨 앞에 추가
+                login_history.insert(0, {
+                    'username': account['INSTAGRAM_USERNAME'],
+                    'password': account['INSTAGRAM_PASSWORD'],
+                    'download_path': account['DOWNLOAD_PATH']
+                })
+                # 최대 10개까지만 유지
+                config['LOGIN_HISTORY'] = login_history[:10]
+                
+                save_config(config)
             else:
                 print(f"로그인 실패: {account['INSTAGRAM_USERNAME']}")
     
@@ -628,8 +647,14 @@ def crawl_and_download(search_terms, target, accounts, search_type, include_imag
                 if "429" in error_msg:
                     print(f"429 오류 발생: {current_username}")
                     account_index = (account_index + 1) % total_accounts
-                    print(f"계정 전환: {loaded_loaders[account_index]['username']}")
-                    progress_queue.put(("account_switch", loaded_loaders[account_index]['username'], "계정 전환 중..."))
+                    new_username = loaded_loaders[account_index]['username']
+                    print(f"계정 전환: {new_username}")
+                    progress_queue.put(("account_switch", new_username, "계정 전환 중..."))
+                    
+                    # 계정 전환 시 LAST_ACCOUNT_USED 업데이트
+                    config = load_config()
+                    config['LAST_ACCOUNT_USED'] = new_username
+                    save_config(config)
                     continue
 
                 # 429 오류가 아닌 경우: 재로그인 시도 후 실패하면 마지막 계정이면 중단
