@@ -357,21 +357,25 @@ def user_download_with_profiles(L, search_user, target, include_images, include_
                     except Exception as e:
                         error_msg = str(e)
                         print(f"프로필 조회 실패: {old_username} - {error_msg}")
-                        # "does not exist" 메시지가 포함된 경우 유사한 프로필 정보도 표시
+                        
+                        # 오류 유형별 처리
                         if "does not exist" in error_msg:
-                            # 저장된 profile-id가 있으면 해당 ID를 존재하지 않는 프로필로 저장
+                            # 프로필이 존재하지 않는 경우
                             stored_profile_id = get_profile_id_for_username(old_username)
                             if stored_profile_id:
                                 add_non_existent_profile_id(stored_profile_id, old_username)
                             else:
-                                # profile-id가 없으면 username으로 저장 (하위 호환성)
                                 config = load_config()
                                 if old_username not in config.get('NON_EXISTENT_PROFILES', []):
                                     config.setdefault('NON_EXISTENT_PROFILES', []).append(old_username)
                                     save_config(config)
                                     print(f"존재하지 않는 프로필 '{old_username}'을 설정에 저장했습니다.")
                             progress_queue.put(("term_error", old_username, error_msg, L.context.username))
+                        elif "401 Unauthorized" in error_msg or "Server Error" in error_msg:
+                            # Instagram API 인증 오류 또는 서버 오류
+                            progress_queue.put(("term_error", old_username, "Instagram 서버 오류 - 잠시 후 다시 시도해주세요", L.context.username))
                         else:
+                            # 기타 오류
                             progress_queue.put(("term_error", old_username, f"프로필 조회 실패: {error_msg}", L.context.username))
                         return
             else:
@@ -382,24 +386,34 @@ def user_download_with_profiles(L, search_user, target, include_images, include_
                 except Exception as e:
                     error_msg = str(e)
                     print(f"프로필 조회 실패: {search_user} - {error_msg}")
-                    # "does not exist" 메시지가 포함된 경우 유사한 프로필 정보도 표시
+                    
+                    # 오류 유형별 처리
                     if "does not exist" in error_msg:
-                        # 저장된 profile-id가 있으면 해당 ID를 존재하지 않는 프로필로 저장
+                        # 프로필이 존재하지 않는 경우
                         stored_profile_id = get_profile_id_for_username(search_user)
                         if stored_profile_id:
                             add_non_existent_profile_id(stored_profile_id, search_user)
                         else:
-                            # profile-id가 없으면 username으로 저장 (하위 호환성)
                             config = load_config()
                             if search_user not in config.get('NON_EXISTENT_PROFILES', []):
                                 config.setdefault('NON_EXISTENT_PROFILES', []).append(search_user)
                                 save_config(config)
                                 print(f"존재하지 않는 프로필 '{search_user}'을 설정에 저장했습니다.")
                         progress_queue.put(("term_error", search_user, error_msg, L.context.username))
+                    elif "401 Unauthorized" in error_msg or "Server Error" in error_msg:
+                        # Instagram API 인증 오류 또는 서버 오류
+                        progress_queue.put(("term_error", search_user, "Instagram 서버 오류 - 잠시 후 다시 시도해주세요", L.context.username))
                     else:
+                        # 기타 오류
                         progress_queue.put(("term_error", search_user, f"프로필 조회 실패: {error_msg}", L.context.username))
                     return
 
+            # profile이 None인 경우 처리
+            if profile is None:
+                print(f"프로필이 None입니다: {search_user}")
+                progress_queue.put(("term_error", search_user, "프로필을 찾을 수 없습니다", L.context.username))
+                return
+                
             content_folder = os.path.join(base_path, "unclassified", "ID", profile.username)
             L_content.dirname_pattern = content_folder
             create_dir_if_not_exists(content_folder)             

@@ -68,7 +68,8 @@ def add_account(accounts_listbox, loaded_accounts, append_status_func):
     
     # 경로 선택 버튼
     def select_path():
-        path = filedialog.askdirectory()
+        # 다이얼로그를 부모 창으로 설정하여 모달 동작 방지
+        path = filedialog.askdirectory(parent=dialog)
         if path:
             download_path_var.set(path)
     
