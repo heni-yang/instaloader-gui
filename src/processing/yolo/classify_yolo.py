@@ -732,8 +732,13 @@ def main():
         )
     elif len(sys.argv) == 5:
         target_dir, search_type, search_term, download_path = sys.argv[1:5]
-        human_dir = os.path.join(download_path, "인물", f"{search_type}_{search_term}")
-        non_human_dir = os.path.join(download_path, "비인물", f"{search_type}_{search_term}")
+        # search_type에서 'user_id'를 'user'로 변경
+        if search_type == "user_id":
+            clean_search_type = "user"
+        else:
+            clean_search_type = search_type
+        human_dir = os.path.join(download_path, "인물", f"{clean_search_type}_{search_term}")
+        non_human_dir = os.path.join(download_path, "비인물", f"{clean_search_type}_{search_term}")
         body_dir = os.path.join(non_human_dir, "body")
         os.makedirs(human_dir, exist_ok=True)
         os.makedirs(non_human_dir, exist_ok=True)

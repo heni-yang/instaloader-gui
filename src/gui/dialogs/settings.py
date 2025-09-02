@@ -169,6 +169,7 @@ def load_existing_directories(hashtag_listbox, user_id_listbox, download_directo
     for d in os.listdir(people_dir):
         full_path = os.path.join(people_dir, d)
         if os.path.isdir(full_path) and d.startswith("user_"):
+            # 'user_' 접두사만 제거
             actual_uid = d[len("user_"):]
             try:
                 ct = os.path.getctime(full_path)
@@ -201,6 +202,7 @@ def sort_user_ids_by_creation_desc(user_id_listbox, append_status_func, download
     for d in os.listdir(people_dir):
         full_path = os.path.join(people_dir, d)
         if os.path.isdir(full_path) and d.startswith("user_"):
+            # 'user_' 접두사만 제거
             actual_uid = d[len("user_"):]
             try:
                 ct = os.path.getctime(full_path)
@@ -246,6 +248,7 @@ def sort_user_ids_by_creation_asc(user_id_listbox, append_status_func, download_
     for d in os.listdir(people_dir):
         full_path = os.path.join(people_dir, d)
         if os.path.isdir(full_path) and d.startswith("user_"):
+            # 'user_' 접두사만 제거
             actual_uid = d[len("user_"):]
             try:
                 ct = os.path.getctime(full_path)
