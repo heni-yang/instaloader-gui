@@ -391,10 +391,14 @@ class GUIController:
                             self.status_panel.append_status(f"{term}: {status}")
                     elif msg_type == "term_complete":
                         self.status_panel.append_status(f"{term} 완료")
+                        # 검색 목록에서 완료된 항목 제거
+                        self._remove_term_from_search(term)
                     elif msg_type == "term_error":
                         self.status_panel.append_status(f"{term} 오류: {status}")
                     elif msg_type == "term_classify_complete":
                         self.status_panel.append_status(f"{term} 분류 완료")
+                        # 검색 목록에서 분류 완료된 항목 제거
+                        self._remove_term_from_search(term)
                     elif msg_type == "account_relogin":
                         self.status_panel.append_status(f"계정 재로그인: {username}")
                     elif msg_type == "account_switch":
