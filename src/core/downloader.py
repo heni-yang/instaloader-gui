@@ -353,7 +353,7 @@ def user_download_with_profiles(L, search_user, target, include_images, include_
                     temp_profile = Profile.from_id(L_content.context, stored_id)
                     if temp_profile.username != old_username:
                         latest_stamps_images.rename_profile(old_username, temp_profile.username)
-                        safe_print(f"사용자명 변경: {old_username} -> {temp_profile.username}", old_username)
+                        print(f"사용자명 변경: {old_username} -> {temp_profile.username}")
                         rename_directories(base_path, search_type, old_username, temp_profile.username)
                         search_user = temp_profile.username
                         profile = temp_profile
@@ -381,7 +381,7 @@ def user_download_with_profiles(L, search_user, target, include_images, include_
                                 if old_username not in config.get('NON_EXISTENT_PROFILES', []):
                                     config.setdefault('NON_EXISTENT_PROFILES', []).append(old_username)
                                     save_config(config)
-                                    safe_print(f"존재하지 않는 프로필을 설정에 저장했습니다.", old_username)
+                                    print(f"존재하지 않는 프로필 '{old_username}'을 설정에 저장했습니다.")
                             progress_queue.put(("term_error", old_username, error_msg, L.context.username))
                         elif "401 Unauthorized" in error_msg or "Server Error" in error_msg:
                             # Instagram API 인증 오류 또는 서버 오류
@@ -441,7 +441,7 @@ def user_download_with_profiles(L, search_user, target, include_images, include_
 
             if latest_stamps_images.get_profile_id(profile.username) is None:
                 latest_stamps_images.save_profile_id(profile.username, profile.userid)
-                safe_print(f"프로필 정보 저장: {profile.username}", profile.username)
+                print(f"프로필 정보 저장: {profile.username}")
 
             image_kwargs = {
                 'profiles': {profile},
