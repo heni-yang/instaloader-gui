@@ -50,7 +50,12 @@ sessions/
 *.session
 *.log
 config.json
+config.json.backup
 latest-stamps-images.ini
+
+# Security files (must not be shared)
+security.key
+security.salt
 
 # Models (if too large)
 models/
