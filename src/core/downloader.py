@@ -502,9 +502,22 @@ def setup_download_environment(download_path, include_images, include_videos, in
     """
     다운로드 환경을 설정합니다.
     """
-    base_download_path = download_path
-    # 기본 다운로드 경로가 없으면 생성
-    create_dir_if_not_exists(base_download_path)
+    import os
+    from ..utils.environment import Environment
+    
+    # 다운로드 경로가 비어있거나 None인 경우 프로젝트 루트의 download 디렉토리 사용
+    if not download_path or download_path.strip() == '':
+        base_download_path = os.path.join(str(Environment.BASE_DIR), "download")
+        print(f"다운로드 경로가 존재하지 않습니다. 기본 경로 사용: {base_download_path}")
+        # 크롤링 시작 시에만 download 디렉토리 생성
+        create_dir_if_not_exists(base_download_path)
+    else:
+        base_download_path = download_path
+        print(f"다운로드 경로: {base_download_path}")
+        # 사용자가 지정한 경로는 항상 생성
+        create_dir_if_not_exists(base_download_path)
+    
+    # 하위 디렉토리 생성
     for sub in ["unclassified", "Reels", "인물", "비인물"]:
         create_dir_if_not_exists(os.path.join(base_download_path, sub))
     

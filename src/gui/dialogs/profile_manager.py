@@ -147,6 +147,7 @@ def manage_profiles(append_status_func):
                 non_existent_listbox.insert(tk.END, username)
             else:
                 # profile_id만 있고 username이 없는 경우는 표시하지 않음 (내부 데이터)
+                pass
         
         # username 기반 존재하지 않는 프로필 목록 (하위 호환성)
         non_existent_profiles = config.get('NON_EXISTENT_PROFILES', [])
@@ -223,6 +224,7 @@ def manage_profiles(append_status_func):
                 private_listbox.insert(tk.END, username)
             else:
                 # profile_id만 있고 username이 없는 경우는 표시하지 않음 (내부 데이터)
+                pass
         
         # username 기반 비공개 프로필 목록 (하위 호환성)
         private_profiles = config.get('PRIVATE_NOT_FOLLOWED_PROFILES', [])
