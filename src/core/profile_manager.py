@@ -65,7 +65,10 @@ def add_non_existent_profile_id(profile_id, username=None):
     if profile_id not in config['NON_EXISTENT_PROFILE_IDS']:
         config['NON_EXISTENT_PROFILE_IDS'].append(profile_id)
         save_config(config)
-        print(f"존재하지 않는 Profile ID '{profile_id}' (username: {username})을 설정에 저장했습니다.")
+        if username:
+            print(f"'{username}' 계정을 찾을 수 없어 기록했습니다.")
+        else:
+            print("존재하지 않는 계정을 기록했습니다.")
 
 def is_profile_id_non_existent(profile_id):
     """
@@ -104,7 +107,7 @@ def remove_non_existent_profile_id(profile_id):
         if profile_id in config['NON_EXISTENT_PROFILE_IDS']:
             config['NON_EXISTENT_PROFILE_IDS'].remove(profile_id)
             save_config(config)
-            print(f"Profile ID '{profile_id}'를 존재하지 않는 프로필 목록에서 제거했습니다.")
+            print("계정 목록이 업데이트되었습니다.")
 
 def clear_non_existent_profile_ids():
     """
@@ -113,7 +116,7 @@ def clear_non_existent_profile_ids():
     config = load_config()
     config['NON_EXISTENT_PROFILE_IDS'] = []
     save_config(config)
-    print("모든 존재하지 않는 Profile ID 목록을 제거했습니다.")
+    print("계정 목록 정리가 완료되었습니다.")
 
 def get_username_by_profile_id(profile_id):
     """
@@ -150,7 +153,10 @@ def add_private_not_followed_profile_id(profile_id, username=None):
     if profile_id not in config['PRIVATE_NOT_FOLLOWED_PROFILE_IDS']:
         config['PRIVATE_NOT_FOLLOWED_PROFILE_IDS'].append(profile_id)
         save_config(config)
-        print(f"비공개 프로필 ID '{profile_id}' (username: {username})을 설정에 저장했습니다.")
+        if username:
+            print(f"'{username}' 계정이 비공개로 설정되어 있습니다.")
+        else:
+            print("비공개 계정을 기록했습니다.")
 
 def is_private_not_followed_profile_id(profile_id):
     """
@@ -189,7 +195,7 @@ def remove_private_not_followed_profile_id(profile_id):
         private_ids.remove(profile_id)
         config['PRIVATE_NOT_FOLLOWED_PROFILE_IDS'] = private_ids
         save_config(config)
-        print(f"비공개 프로필 ID '{profile_id}'가 목록에서 제거되었습니다.")
+        print("비공개 계정 목록이 업데이트되었습니다.")
 
 def clear_private_not_followed_profile_ids():
     """
@@ -198,4 +204,4 @@ def clear_private_not_followed_profile_ids():
     config = load_config()
     config['PRIVATE_NOT_FOLLOWED_PROFILE_IDS'] = []
     save_config(config)
-    print("비공개 프로필 ID 목록이 모두 제거되었습니다.")
+    print("비공개 계정 목록 정리가 완료되었습니다.")

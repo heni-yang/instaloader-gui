@@ -140,18 +140,20 @@ def manage_profiles(append_status_func):
         non_existent_profile_ids = config.get('NON_EXISTENT_PROFILE_IDS', [])
         profile_ids_map = load_profile_ids_from_stamps_non_existent()
         
-        # profile-id를 username으로 변환하여 표시
+        # profile-id를 username으로 변환하여 표시 (ID는 내부적으로만 관리)
         for profile_id in non_existent_profile_ids:
             username = get_username_by_profile_id_non_existent(profile_id)
             if username:
-                non_existent_listbox.insert(tk.END, f"{username} (ID: {profile_id})")
+                non_existent_listbox.insert(tk.END, username)
             else:
-                non_existent_listbox.insert(tk.END, f"Unknown (ID: {profile_id})")
+                # profile_id만 있고 username이 없는 경우는 표시하지 않음 (내부 데이터)
         
         # username 기반 존재하지 않는 프로필 목록 (하위 호환성)
         non_existent_profiles = config.get('NON_EXISTENT_PROFILES', [])
         for username in non_existent_profiles:
-            if not any(f"{username} (ID:" in non_existent_listbox.get(i) for i in range(non_existent_listbox.size())):
+            # 중복 체크: 이미 추가된 username이 있는지 확인
+            existing_items = [non_existent_listbox.get(i) for i in range(non_existent_listbox.size())]
+            if username not in existing_items:
                 non_existent_listbox.insert(tk.END, username)
         
         count = non_existent_listbox.size()
@@ -214,18 +216,20 @@ def manage_profiles(append_status_func):
         private_profile_ids = config.get('PRIVATE_NOT_FOLLOWED_PROFILE_IDS', [])
         profile_ids_map = load_profile_ids_from_stamps_private()
         
-        # profile-id를 username으로 변환하여 표시
+        # profile-id를 username으로 변환하여 표시 (ID는 내부적으로만 관리)
         for profile_id in private_profile_ids:
             username = get_username_by_profile_id_private(profile_id)
             if username:
-                private_listbox.insert(tk.END, f"{username} (ID: {profile_id})")
+                private_listbox.insert(tk.END, username)
             else:
-                private_listbox.insert(tk.END, f"Unknown (ID: {profile_id})")
+                # profile_id만 있고 username이 없는 경우는 표시하지 않음 (내부 데이터)
         
         # username 기반 비공개 프로필 목록 (하위 호환성)
         private_profiles = config.get('PRIVATE_NOT_FOLLOWED_PROFILES', [])
         for username in private_profiles:
-            if not any(f"{username} (ID:" in private_listbox.get(i) for i in range(private_listbox.size())):
+            # 중복 체크: 이미 추가된 username이 있는지 확인
+            existing_items = [private_listbox.get(i) for i in range(private_listbox.size())]
+            if username not in existing_items:
                 private_listbox.insert(tk.END, username)
         
         count = private_listbox.size()

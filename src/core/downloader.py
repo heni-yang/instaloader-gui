@@ -4,13 +4,18 @@ import instaloader
 from instaloader import Profile, LatestStamps, RateController, exceptions
 import time
 from itertools import islice
+from ..utils.secure_logging import (
+    safe_print, safe_error, safe_debug,
+    print_login_success, print_login_failure, print_session_loaded,
+    print_account_switch, print_debug_rate_controller
+)
 
 # 커스텀 RateController 클래스 (단순화된 버전)
 class CustomRateController(RateController):
     def __init__(self, context, additional_wait_time=0.0):
         super().__init__(context)
         self.additional_wait_time = additional_wait_time
-        print(f"[REQUEST_WAIT_DEBUG] CustomRateController 초기화 - 추가 대기시간: {self.additional_wait_time}초")
+        safe_debug(f"[REQUEST_WAIT_DEBUG] CustomRateController 초기화 - 추가 대기시간: {self.additional_wait_time}초")
     
     def wait_before_query(self, query_type: str) -> None:
         # Instaloader의 기본 대기시간 계산
@@ -79,14 +84,14 @@ def instaloader_login(username, password, download_path, include_videos=False, i
         resume_prefix=resume_prefix,  # 기본 이어받기 활성화 (프로필별로 덮어씀)
         rate_controller=lambda context: CustomRateController(context, request_wait_time)
     )
-    print(f"[REQUEST_WAIT_DEBUG] CustomRateController 적용됨 - 사용자: {username}, 추가 대기시간: {request_wait_time}초")
+    print_debug_rate_controller(username, request_wait_time)
     session_file = os.path.join(SESSION_DIR, f"{username}.session")
     
     try:
         # 세션 파일이 존재하면 이를 우선 로드
         if os.path.isfile(session_file):
             L.load_session_from_file(username, filename=session_file)
-            print(f"세션 로드 성공: {username}")
+            print_session_loaded(username)
         # 세션 파일이 없고 cookiefile이 제공되면 쿠키를 이용해 로그인 및 세션 저장
         elif cookiefile:
             print("Using cookies from {}.".format(cookiefile))
@@ -110,16 +115,16 @@ def instaloader_login(username, password, download_path, include_videos=False, i
         else:
             # 세션 파일이 없고 cookiefile도 제공되지 않으면, 사용자명과 비밀번호로 로그인
             L.login(username, password)
-            print(f"로그인 성공: {username}")
+            print_login_success(username)
             L.save_session_to_file(filename=session_file)
     except instaloader.exceptions.BadCredentialsException:
-        print(f"잘못된 아이디/비밀번호: {username}")
+        print_login_failure(username, "잘못된 아이디/비밀번호")
         return None
     except instaloader.exceptions.TwoFactorAuthRequiredException:
-        print(f"이중 인증 필요: {username}")
+        print_login_failure(username, "이중 인증 필요")
         return None
     except Exception as e:
-        print(f"{username} 로그인 오류: {e}")
+        safe_error(f"로그인 오류", username, e)
         return None
 
     return L
@@ -342,21 +347,21 @@ def user_download_with_profiles(L, search_user, target, include_images, include_
                     temp_profile = Profile.from_id(L_content.context, stored_id)
                     if temp_profile.username != old_username:
                         latest_stamps_images.rename_profile(old_username, temp_profile.username)
-                        print(f"사용자명 변경: {old_username} -> {temp_profile.username}")
+                        safe_print(f"사용자명 변경: {old_username} -> {temp_profile.username}", old_username)
                         rename_directories(base_path, search_type, old_username, temp_profile.username)
                         search_user = temp_profile.username
                         profile = temp_profile
                     else:
                         profile = Profile.from_id(L_content.context, stored_id)
                 except Exception as e:
-                    print(f"저장된 ID로 프로필 조회 실패: {e}")
+                    safe_error(f"저장된 ID로 프로필 조회 실패", exception=e)
                     # 저장된 ID로 실패한 경우 username으로 재시도
                     profile = None
                     try:
                         profile = Profile.from_username(L_content.context, old_username)
                     except Exception as e:
                         error_msg = str(e)
-                        print(f"프로필 조회 실패: {old_username} - {error_msg}")
+                        safe_error(f"프로필 조회 실패: {error_msg}", old_username)
                         
                         # 오류 유형별 처리
                         if "does not exist" in error_msg:
@@ -369,7 +374,7 @@ def user_download_with_profiles(L, search_user, target, include_images, include_
                                 if old_username not in config.get('NON_EXISTENT_PROFILES', []):
                                     config.setdefault('NON_EXISTENT_PROFILES', []).append(old_username)
                                     save_config(config)
-                                    print(f"존재하지 않는 프로필 '{old_username}'을 설정에 저장했습니다.")
+                                    safe_print(f"존재하지 않는 프로필을 설정에 저장했습니다.", old_username)
                             progress_queue.put(("term_error", old_username, error_msg, L.context.username))
                         elif "401 Unauthorized" in error_msg or "Server Error" in error_msg:
                             # Instagram API 인증 오류 또는 서버 오류
@@ -424,7 +429,7 @@ def user_download_with_profiles(L, search_user, target, include_images, include_
 
             if latest_stamps_images.get_profile_id(profile.username) is None:
                 latest_stamps_images.save_profile_id(profile.username, profile.userid)
-                print(f"프로필 ID 저장: {profile.username} (ID: {profile.userid})")
+                safe_print(f"프로필 정보 저장: {profile.username}", profile.username)
 
             image_kwargs = {
                 'profiles': {profile},
@@ -531,11 +536,11 @@ def setup_accounts(accounts, base_download_path, include_videos, include_reels, 
             resume_prefix="resume_anonymous",
             rate_controller=lambda context: CustomRateController(context, request_wait_time)
         )
-        print(f"[REQUEST_WAIT_DEBUG] CustomRateController 적용됨 - 익명 사용자, 추가 대기시간: {request_wait_time}초")
+        safe_debug(f"[REQUEST_WAIT_DEBUG] CustomRateController 적용됨 - 익명 사용자, 추가 대기시간: {request_wait_time}초")
         loaded_loaders.append({'loader': loader, 'username': 'anonymous', 'password': None, 'active': True})
     else:
         # 계정 크롤링
-        print(f"[REQUEST_WAIT_DEBUG] 계정 크롤링 시작 - 요청 간 대기시간: {request_wait_time}초")
+        safe_debug(f"[REQUEST_WAIT_DEBUG] 계정 크롤링 시작 - 요청 간 대기시간: {request_wait_time}초")
         
         for account in accounts:
             loader = instaloader_login(
@@ -571,7 +576,7 @@ def setup_accounts(accounts, base_download_path, include_videos, include_reels, 
                 
                 save_config(config)
             else:
-                print(f"로그인 실패: {account['INSTAGRAM_USERNAME']}")
+                safe_error(f"로그인 실패", account['INSTAGRAM_USERNAME'])
     
     return loaded_loaders
 
@@ -663,16 +668,16 @@ def process_downloads(loaded_loaders, search_terms, target, search_type, include
                 break
             except Exception as e:
                 error_msg = str(e)
-                print(f"계정 처리 오류: {error_msg}")
-                append_status(f"{current_username} 계정 오류, 재로그인 시도 중...")
+                safe_error(f"계정 처리 오류: {error_msg}", current_username)
+                append_status("계정 오류 발생, 재로그인 시도 중...")
                 progress_queue.put(("account_relogin", current_username, "재로그인 시도 중..."))
 
                 # 429 오류인 경우: 계정을 순환 (라운드 로빈)
                 if "429" in error_msg:
-                    print(f"429 오류 발생: {current_username}")
+                    safe_error(f"429 오류 발생", current_username)
                     account_index = (account_index + 1) % total_accounts
                     new_username = loaded_loaders[account_index]['username']
-                    print(f"계정 전환: {new_username}")
+                    print_account_switch(current_username, new_username)
                     progress_queue.put(("account_switch", new_username, "계정 전환 중..."))
                     
                     # 계정 전환 시 LAST_ACCOUNT_USED 업데이트
@@ -694,13 +699,14 @@ def process_downloads(loaded_loaders, search_terms, target, search_type, include
                 if new_loader:
                     loaded_loaders[account_index]['loader'] = new_loader
                     L = new_loader
-                    print(f"재로그인 성공: {current_username}")
+                    safe_print(f"재로그인 성공", current_username)
                     continue
                 else:
-                    print(f"재로그인 실패: {current_username}")
+                    safe_error(f"재로그인 실패", current_username)
                     account_index += 1
                     if account_index < total_accounts:
-                        print(f"계정 전환: {loaded_loaders[account_index]['username']}")
+                        next_username = loaded_loaders[account_index]['username']
+                        print_account_switch(current_username, next_username)
                         progress_queue.put(("account_switch", loaded_loaders[account_index]['username'], "계정 전환 중..."))
                         continue
                     else:

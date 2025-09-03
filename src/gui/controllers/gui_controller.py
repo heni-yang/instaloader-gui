@@ -13,6 +13,7 @@ from ..dialogs.profile_manager import manage_profiles
 from ..dialogs.settings import load_existing_directories, delete_selected_items
 from ...core.downloader import crawl_and_download
 from ...processing.post_processing import process_images
+from ...utils.secure_logging import mask_username
 from ...utils.config import save_config
 
 
@@ -400,9 +401,11 @@ class GUIController:
                         # 검색 목록에서 분류 완료된 항목 제거
                         self._remove_term_from_search(term)
                     elif msg_type == "account_relogin":
-                        self.status_panel.append_status(f"계정 재로그인: {username}")
+                        masked_username = mask_username(username) if username != 'anonymous' else username
+                        self.status_panel.append_status(f"계정 재로그인: {masked_username}")
                     elif msg_type == "account_switch":
-                        self.status_panel.append_status(f"계정 전환: {username}")
+                        masked_username = mask_username(username) if username != 'anonymous' else username
+                        self.status_panel.append_status(f"계정 전환: {masked_username}")
                     elif msg_type == "update_progress":
                         # 프로그레스바 업데이트
                         current = message[1]
