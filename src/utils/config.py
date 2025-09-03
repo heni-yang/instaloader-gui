@@ -12,19 +12,38 @@ Environment.ensure_directories()
 default_config = {
     'ACCOUNTS': [],
     'LAST_SEARCH_TYPE': 'hashtag',
+    'LAST_DOWNLOAD_PATH': '',
+    'REQUEST_WAIT_TIME': 0.0,
+    'HASHTAG_OPTIONS': {
+        'include_images': True,
+        'include_videos': False,
+        'include_human_classify': False,
+        'include_upscale': False
+    },
+    'USER_ID_OPTIONS': {
+        'include_images': True,
+        'include_reels': False,
+        'include_human_classify': False,
+        'include_upscale': False
+    },
+    'ALLOW_DUPLICATE': False,
     'SEARCH_TERMS': [],
     'INCLUDE_IMAGES': True,
     'INCLUDE_VIDEOS': False,
     'INCLUDE_REELS': False,
     'INCLUDE_HUMAN_CLASSIFY': False,
+    'INCLUDE_UPSCALE': False,
     'LOGIN_HISTORY': [],
-    'LAST_ACCOUNT_USED': None,  # 마지막 사용된 계정 사용자명
-    'LAST_DOWNLOAD_PATH': str(Environment.DOWNLOADS_DIR),
-    'NON_EXISTENT_PROFILES': [],  # 존재하지 않는 프로필 목록 (username 기반, 하위 호환성)
-    'NON_EXISTENT_PROFILE_IDS': [],  # 존재하지 않는 프로필 ID 목록 (profile-id 기반)
-    'PRIVATE_NOT_FOLLOWED_PROFILES': [],  # 비공개 프로필 목록 (username 기반)
-    'PRIVATE_NOT_FOLLOWED_PROFILE_IDS': [],  # 비공개 프로필 ID 목록 (profile-id 기반)
-    'REQUEST_WAIT_TIME': 0.0  # 요청 간 추가 대기시간 (초, 0=자동)
+    'LAST_ACCOUNT_USED': None,
+    'NON_EXISTENT_PROFILES': [],
+    'NON_EXISTENT_PROFILE_IDS': [],
+    'DOWNLOAD_HISTORY': [],
+    'ERROR_LOG': [],
+    'SETTINGS': {
+        'max_retries': 3,
+        'timeout': 30,
+        'max_concurrent_downloads': 1
+    }
 }
 
 def load_config():

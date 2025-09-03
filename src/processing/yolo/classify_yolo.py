@@ -59,7 +59,7 @@ if DEBUG_ANNOTATION:
     os.makedirs(DEBUG_DIR, exist_ok=True)
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
-project_root = os.path.abspath(os.path.join(script_dir, "..", ".."))
+project_root = os.path.abspath(os.path.join(script_dir, "..", "..", ".."))
 YOLO_MODEL_NAME = "yolo11l-seg.pt"
 YOLO_POSE_MODEL_NAME = "yolo11x-pose.pt"
 WEIGHTS_PATH = os.path.join(project_root, "models", "classification", YOLO_MODEL_NAME)
@@ -430,7 +430,7 @@ def classify_single_image(image_path, preloaded_img, seg_result, pose_result,
             # 원본 크롭 좌표 복원
             kps[:, 0] = (kps[:, 0] - left_pad) / scale + x1
             kps[:, 1] = (kps[:, 1] - top) / scale + y1
-            pose_crop_result.keypoints.data = torch.tensor([kps])
+            pose_crop_result.keypoints.data = torch.from_numpy(np.array([kps]))
             keypoints_pose = extract_pose_keypoints(pose_crop_result)
             xs, ys = keypoints_pose[:, 0], keypoints_pose[:, 1]
             pose_bbox_cropped = (int(xs.min()), int(ys.min()), int(xs.max()), int(ys.max()))
@@ -732,8 +732,13 @@ def main():
         )
     elif len(sys.argv) == 5:
         target_dir, search_type, search_term, download_path = sys.argv[1:5]
-        human_dir = os.path.join(download_path, "인물", f"{search_type}_{search_term}")
-        non_human_dir = os.path.join(download_path, "비인물", f"{search_type}_{search_term}")
+        # search_type에서 'user_id'를 'user'로 변경
+        if search_type == "user_id":
+            clean_search_type = "user"
+        else:
+            clean_search_type = search_type
+        human_dir = os.path.join(download_path, "인물", f"{clean_search_type}_{search_term}")
+        non_human_dir = os.path.join(download_path, "비인물", f"{clean_search_type}_{search_term}")
         body_dir = os.path.join(non_human_dir, "body")
         os.makedirs(human_dir, exist_ok=True)
         os.makedirs(non_human_dir, exist_ok=True)

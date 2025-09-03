@@ -34,7 +34,7 @@ def upscale_image(input_path: str, output_path: str, face_upscale: int = 2, over
     orig_size = orig_img.size  # (width, height)
    
     # 모델 파일 경로: models/upscaling 폴더 내에 있음 (프로젝트 루트 기준)
-    project_root = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
+    project_root = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..'))
     model_dir = os.path.join(project_root, 'models', 'upscaling')
     gfpgan_model_path = os.path.join(model_dir, 'GFPGANv1.4.pth')
     realesrgan_model_path = os.path.join(model_dir, f'RealESRGAN_x{overall_scale}plus.pth')

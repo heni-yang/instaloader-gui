@@ -61,49 +61,91 @@ def toggle_upscale_user(include_human_classify_var_user, upscale_var_user, upsca
         upscale_var_user.set(False)
         upscale_checkbox_user.configure(state='disabled')
 
-def toggle_human_classify(parent_frame, img_var, human_var, include_human_classify_check_hashtag, include_human_classify_check_user):
+def toggle_human_classify(parent_frame, img_var, human_var, include_human_classify_check_hashtag=None, include_human_classify_check_user=None):
     """
     이미지 체크박스 값에 따라 인물 분류 체크박스 활성/비활성 제어
     """
     if img_var.get():
         if parent_frame == "hashtag_frame":
-            include_human_classify_check_hashtag.configure(state='normal')
+            if include_human_classify_check_hashtag:
+                include_human_classify_check_hashtag.configure(state='normal')
         else:
-            include_human_classify_check_user.configure(state='normal')
+            if include_human_classify_check_user:
+                include_human_classify_check_user.configure(state='normal')
     else:
         human_var.set(False)
         if parent_frame == "hashtag_frame":
-            include_human_classify_check_hashtag.configure(state='disabled')
+            if include_human_classify_check_hashtag:
+                include_human_classify_check_hashtag.configure(state='disabled')
         else:
-            include_human_classify_check_user.configure(state='disabled')
+            if include_human_classify_check_user:
+                include_human_classify_check_user.configure(state='disabled')
 
 def on_search_type_change(search_type_var, include_images_check_hashtag, include_videos_check_hashtag, 
                          include_human_classify_check_hashtag, include_images_var_hashtag, include_human_classify_var_hashtag,
                          include_images_check_user, include_reels_check_user, include_human_classify_check_user,
                          include_images_var_user, include_human_classify_var_user, hashtag_frame, user_id_frame,
-                         append_status_func, *args):
+                         append_status_func, upscale_checkbox_hashtag=None, upscale_checkbox_user=None, *args):
     """
     검색 유형이 변경될 때 호출됩니다.
     """
     stype = search_type_var.get()
+    
     if stype == "hashtag":
+        # 해시태그 선택시: 해시태그 체크박스들 활성화, 사용자 ID 체크박스들 비활성화
         include_images_check_hashtag.configure(state='normal')
         include_videos_check_hashtag.configure(state='normal')
-        toggle_human_classify(hashtag_frame, include_images_var_hashtag, include_human_classify_var_hashtag, 
-                             include_human_classify_check_hashtag, include_human_classify_check_user)
+        include_human_classify_check_hashtag.configure(state='normal')
+        
+        # 사용자 ID 체크박스들 비활성화 (값은 유지)
         include_images_check_user.configure(state='disabled')
         include_reels_check_user.configure(state='disabled')
-        include_human_classify_var_user.set(False)
         include_human_classify_check_user.configure(state='disabled')
-    else:
+        
+        # 해시태그 이미지 체크 상태에 따른 인물 분류 활성화
+        if include_images_var_hashtag.get():
+            include_human_classify_check_hashtag.configure(state='normal')
+        else:
+            include_human_classify_check_hashtag.configure(state='disabled')
+        
+        # 해시태그 인물 분류 체크 상태에 따른 업스케일링 활성화
+        if upscale_checkbox_hashtag:
+            if include_human_classify_var_hashtag.get():
+                upscale_checkbox_hashtag.configure(state='normal')
+            else:
+                upscale_checkbox_hashtag.configure(state='disabled')
+        
+        # 사용자 ID 업스케일링 체크박스 비활성화
+        if upscale_checkbox_user:
+            upscale_checkbox_user.configure(state='disabled')
+            
+    else:  # user
+        # 사용자 ID 선택시: 사용자 ID 체크박스들 활성화, 해시태그 체크박스들 비활성화
         include_images_check_user.configure(state='normal')
         include_reels_check_user.configure(state='normal')
-        toggle_human_classify(user_id_frame, include_images_var_user, include_human_classify_var_user,
-                             include_human_classify_check_hashtag, include_human_classify_check_user)
+        include_human_classify_check_user.configure(state='normal')
+        
+        # 해시태그 체크박스들 비활성화 (값은 유지)
         include_images_check_hashtag.configure(state='disabled')
         include_videos_check_hashtag.configure(state='disabled')
-        include_human_classify_var_hashtag.set(False)
         include_human_classify_check_hashtag.configure(state='disabled')
+        
+        # 사용자 ID 이미지 체크 상태에 따른 인물 분류 활성화
+        if include_images_var_user.get():
+            include_human_classify_check_user.configure(state='normal')
+        else:
+            include_human_classify_check_user.configure(state='disabled')
+        
+        # 사용자 ID 인물 분류 체크 상태에 따른 업스케일링 활성화
+        if upscale_checkbox_user:
+            if include_human_classify_var_user.get():
+                upscale_checkbox_user.configure(state='normal')
+            else:
+                upscale_checkbox_user.configure(state='disabled')
+        
+        # 해시태그 업스케일링 체크박스 비활성화
+        if upscale_checkbox_hashtag:
+            upscale_checkbox_hashtag.configure(state='disabled')
 
 def open_download_directory(download_directory_var, append_status_func):
     """

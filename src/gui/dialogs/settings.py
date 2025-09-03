@@ -11,10 +11,17 @@ from datetime import datetime
 import configparser
 from ...utils.config import load_config, save_config
 
-def delete_selected_items(hashtag_listbox, user_id_listbox, download_directory_var, append_status_func):
+def delete_selected_items(hashtag_listbox, user_id_listbox, config):
     """
     선택된 해시태그와 사용자 ID와 관련된 모든 디렉토리를 삭제합니다.
     """
+    import time
+    import stat
+    
+    # config에서 다운로드 경로 가져오기
+    download_directory = config.get('LAST_DOWNLOAD_PATH', '')
+    append_status_func = lambda x: print(f"상태: {x}")
+    
     # 해시태그 선택 확인
     hashtag_indices = hashtag_listbox.curselection()
     user_id_indices = user_id_listbox.curselection()
@@ -40,8 +47,45 @@ def delete_selected_items(hashtag_listbox, user_id_listbox, download_directory_v
         append_status_func("삭제가 취소되었습니다.")
         return
     
-    main_download_dir = download_directory_var.get()
+    main_download_dir = download_directory
     deleted_count = 0
+    
+    def force_delete_directory(dir_path):
+        """권한 문제를 해결하여 디렉토리를 강제로 삭제합니다."""
+        if not os.path.exists(dir_path):
+            return False
+        
+        try:
+            # 파일 속성 변경 (읽기 전용 해제)
+            for root, dirs, files in os.walk(dir_path):
+                for dir_name in dirs:
+                    dir_path_full = os.path.join(root, dir_name)
+                    try:
+                        os.chmod(dir_path_full, stat.S_IWRITE)
+                    except:
+                        pass
+                
+                for file_name in files:
+                    file_path = os.path.join(root, file_name)
+                    try:
+                        os.chmod(file_path, stat.S_IWRITE)
+                    except:
+                        pass
+            
+            # 디렉토리 자체의 속성도 변경
+            try:
+                os.chmod(dir_path, stat.S_IWRITE)
+            except:
+                pass
+            
+            # 잠시 대기 후 삭제 시도
+            time.sleep(0.1)
+            shutil.rmtree(dir_path, ignore_errors=True)
+            return True
+            
+        except Exception as e:
+            append_status_func(f"경고: {dir_path} 삭제 실패 - {e}")
+            return False
     
     # 해시태그 삭제
     if selected_hashtags:
@@ -57,8 +101,7 @@ def delete_selected_items(hashtag_listbox, user_id_listbox, download_directory_v
                 ]
                 
                 for dir_path in dirs_to_delete:
-                    if os.path.exists(dir_path):
-                        shutil.rmtree(dir_path)
+                    if force_delete_directory(dir_path):
                         append_status_func(f"삭제됨: {dir_path}")
                         deleted_count += 1
                 
@@ -83,8 +126,7 @@ def delete_selected_items(hashtag_listbox, user_id_listbox, download_directory_v
                 ]
                 
                 for dir_path in dirs_to_delete:
-                    if os.path.exists(dir_path):
-                        shutil.rmtree(dir_path)
+                    if force_delete_directory(dir_path):
                         append_status_func(f"삭제됨: {dir_path}")
                         deleted_count += 1
                 
@@ -97,10 +139,13 @@ def delete_selected_items(hashtag_listbox, user_id_listbox, download_directory_v
     
     append_status_func(f"삭제 완료: {deleted_count}개의 디렉토리가 삭제되었습니다.")
 
-def load_existing_directories(hashtag_listbox, user_id_listbox, download_directory_var, append_status_func):
+def load_existing_directories(hashtag_listbox, user_id_listbox, download_directory_var, append_status_func=None):
     """
     다운로드 경로에 있는 기존 디렉토리들을 불러옵니다.
     """
+    if append_status_func is None:
+        append_status_func = lambda x: print(f"상태: {x}")
+    
     main_download_dir = download_directory_var.get()
     if not os.path.isdir(main_download_dir):
         append_status_func(f"오류: 다운로드 경로가 존재하지 않습니다: {main_download_dir}")
@@ -124,6 +169,7 @@ def load_existing_directories(hashtag_listbox, user_id_listbox, download_directo
     for d in os.listdir(people_dir):
         full_path = os.path.join(people_dir, d)
         if os.path.isdir(full_path) and d.startswith("user_"):
+            # 'user_' 접두사만 제거
             actual_uid = d[len("user_"):]
             try:
                 ct = os.path.getctime(full_path)
@@ -156,6 +202,7 @@ def sort_user_ids_by_creation_desc(user_id_listbox, append_status_func, download
     for d in os.listdir(people_dir):
         full_path = os.path.join(people_dir, d)
         if os.path.isdir(full_path) and d.startswith("user_"):
+            # 'user_' 접두사만 제거
             actual_uid = d[len("user_"):]
             try:
                 ct = os.path.getctime(full_path)
@@ -201,6 +248,7 @@ def sort_user_ids_by_creation_asc(user_id_listbox, append_status_func, download_
     for d in os.listdir(people_dir):
         full_path = os.path.join(people_dir, d)
         if os.path.isdir(full_path) and d.startswith("user_"):
+            # 'user_' 접두사만 제거
             actual_uid = d[len("user_"):]
             try:
                 ct = os.path.getctime(full_path)

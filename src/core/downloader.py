@@ -170,8 +170,24 @@ def download_posts(
             progress_queue.put(("term_error", search_term, "지원되지 않는 검색 유형", username))
             return
 
+        # 타입 안전성 개선: 문자열을 정수로 변환 (test-refactoring에서 추가된 기능)
+        if isinstance(total_posts, str):
+            try:
+                total_posts = int(total_posts)
+            except ValueError:
+                print(f"경고: total_posts를 정수로 변환할 수 없습니다: {total_posts}")
+                total_posts = 0
+
         if target != 0 and target < total_posts:
             total_posts = target
+
+        # total_posts가 문자열인 경우 정수로 변환
+        if isinstance(total_posts, str):
+            try:
+                total_posts = int(total_posts)
+            except ValueError:
+                print(f"경고: total_posts를 정수로 변환할 수 없습니다: {total_posts}")
+                total_posts = 0
 
         if stop_event.is_set():
             print("중지 신호 감지. 다운로드 중지됨.")
@@ -286,6 +302,14 @@ def user_download_with_profiles(L, search_user, target, include_images, include_
         base_path (str): 기본 다운로드 경로.
         search_type (str): 검색 유형.
     """
+    # target이 문자열인 경우 정수로 변환
+    if isinstance(target, str):
+        try:
+            target = int(target)
+        except ValueError:
+            print(f"경고: target을 정수로 변환할 수 없습니다: {target}")
+            target = 0
+    
     def download_content():
         nonlocal search_user, base_path
         resume_prefix = None  # resume_prefix 변수를 함수 스코프에서 접근 가능하도록 선언
@@ -333,21 +357,25 @@ def user_download_with_profiles(L, search_user, target, include_images, include_
                     except Exception as e:
                         error_msg = str(e)
                         print(f"프로필 조회 실패: {old_username} - {error_msg}")
-                        # "does not exist" 메시지가 포함된 경우 유사한 프로필 정보도 표시
+                        
+                        # 오류 유형별 처리
                         if "does not exist" in error_msg:
-                            # 저장된 profile-id가 있으면 해당 ID를 존재하지 않는 프로필로 저장
+                            # 프로필이 존재하지 않는 경우
                             stored_profile_id = get_profile_id_for_username(old_username)
                             if stored_profile_id:
                                 add_non_existent_profile_id(stored_profile_id, old_username)
                             else:
-                                # profile-id가 없으면 username으로 저장 (하위 호환성)
                                 config = load_config()
                                 if old_username not in config.get('NON_EXISTENT_PROFILES', []):
                                     config.setdefault('NON_EXISTENT_PROFILES', []).append(old_username)
                                     save_config(config)
                                     print(f"존재하지 않는 프로필 '{old_username}'을 설정에 저장했습니다.")
                             progress_queue.put(("term_error", old_username, error_msg, L.context.username))
+                        elif "401 Unauthorized" in error_msg or "Server Error" in error_msg:
+                            # Instagram API 인증 오류 또는 서버 오류
+                            progress_queue.put(("term_error", old_username, "Instagram 서버 오류 - 잠시 후 다시 시도해주세요", L.context.username))
                         else:
+                            # 기타 오류
                             progress_queue.put(("term_error", old_username, f"프로필 조회 실패: {error_msg}", L.context.username))
                         return
             else:
@@ -358,24 +386,34 @@ def user_download_with_profiles(L, search_user, target, include_images, include_
                 except Exception as e:
                     error_msg = str(e)
                     print(f"프로필 조회 실패: {search_user} - {error_msg}")
-                    # "does not exist" 메시지가 포함된 경우 유사한 프로필 정보도 표시
+                    
+                    # 오류 유형별 처리
                     if "does not exist" in error_msg:
-                        # 저장된 profile-id가 있으면 해당 ID를 존재하지 않는 프로필로 저장
+                        # 프로필이 존재하지 않는 경우
                         stored_profile_id = get_profile_id_for_username(search_user)
                         if stored_profile_id:
                             add_non_existent_profile_id(stored_profile_id, search_user)
                         else:
-                            # profile-id가 없으면 username으로 저장 (하위 호환성)
                             config = load_config()
                             if search_user not in config.get('NON_EXISTENT_PROFILES', []):
                                 config.setdefault('NON_EXISTENT_PROFILES', []).append(search_user)
                                 save_config(config)
                                 print(f"존재하지 않는 프로필 '{search_user}'을 설정에 저장했습니다.")
                         progress_queue.put(("term_error", search_user, error_msg, L.context.username))
+                    elif "401 Unauthorized" in error_msg or "Server Error" in error_msg:
+                        # Instagram API 인증 오류 또는 서버 오류
+                        progress_queue.put(("term_error", search_user, "Instagram 서버 오류 - 잠시 후 다시 시도해주세요", L.context.username))
                     else:
+                        # 기타 오류
                         progress_queue.put(("term_error", search_user, f"프로필 조회 실패: {error_msg}", L.context.username))
                     return
 
+            # profile이 None인 경우 처리
+            if profile is None:
+                print(f"프로필이 None입니다: {search_user}")
+                progress_queue.put(("term_error", search_user, "프로필을 찾을 수 없습니다", L.context.username))
+                return
+                
             content_folder = os.path.join(base_path, "unclassified", "ID", profile.username)
             L_content.dirname_pattern = content_folder
             create_dir_if_not_exists(content_folder)             
@@ -400,7 +438,7 @@ def user_download_with_profiles(L, search_user, target, include_images, include_
                 'post_filter': my_post_filter,
                 'raise_errors': True,
                 'latest_stamps': None if allow_duplicate else latest_stamps_images,
-                'max_count': target if target != 0 else None,
+                'max_count': int(target) if target != 0 else None,
             }
 
             # 다운로드 실행
@@ -434,8 +472,6 @@ def user_download_with_profiles(L, search_user, target, include_images, include_
             error_msg = str(e)
             print(f"{search_user} 다운로드 오류: {error_msg}")
             
-
-            
             # "Private but not followed" 오류 감지 및 저장
             if "Private but not followed" in error_msg:
                 # 저장된 profile-id가 있으면 해당 ID를 비공개 프로필로 저장
@@ -457,44 +493,30 @@ def user_download_with_profiles(L, search_user, target, include_images, include_
             #raise
     download_content()
 
-def crawl_and_download(search_terms, target, accounts, search_type, include_images, include_videos, include_reels,
-                       include_human_classify, include_upscale, progress_queue, on_complete, stop_event, download_path='download', append_status=None,
-                       root=None, download_directory_var=None, allow_duplicate=False, update_overall_progress=None, 
-                       update_current_progress=None, update_eta=None, start_time=None, total_terms=None):
+def setup_download_environment(download_path, include_images, include_videos, include_reels):
     """
-    인스타그램 게시물을 크롤링 및 다운로드하는 메인 함수.
-    
-    매개변수:
-        search_terms (list): 검색할 해시태그 또는 사용자 ID 목록.
-        target (int): 각 검색어당 다운로드할 게시물 수 (0이면 전체).
-        accounts (list): 로그인 정보가 담긴 계정 리스트.
-        search_type (str): 'hashtag' 또는 'user'.
-        include_images (bool): 이미지 다운로드 여부.
-        include_videos (bool): 영상 다운로드 여부.
-        include_reels (bool): 릴스 다운로드 여부.
-        include_human_classify (bool): 다운로드 후 인물 분류 여부.
-        include_upscale (bool): 인물 분류 후 업스케일 여부.
-        progress_queue: 진행 상황 전달 큐.
-        on_complete (callable): 크롤링 완료 후 호출 함수.
-        stop_event: 중지 이벤트.
-        download_path (str): 기본 다운로드 경로.
-        append_status (callable): 상태 메시지 기록 함수.
-        root: GUI용 Tkinter 루트 창.
-        download_directory_var: 다운로드 경로 변수.
-        allow_duplicate (bool): 중복 다운로드 허용 여부.
+    다운로드 환경을 설정합니다.
     """
-    print("크롤링 및 다운로드 시작...")
     base_download_path = download_path
     # 기본 다운로드 경로가 없으면 생성
     create_dir_if_not_exists(base_download_path)
     for sub in ["unclassified", "Reels", "인물", "비인물"]:
         create_dir_if_not_exists(os.path.join(base_download_path, sub))
     
+    # 요청 간 대기시간 설정 로드
+    config = load_config()
+    request_wait_time = config.get('REQUEST_WAIT_TIME', 0.0)
+    
+    return base_download_path, request_wait_time
+
+def setup_accounts(accounts, base_download_path, include_videos, include_reels, request_wait_time):
+    """
+    계정을 설정하고 로그인합니다.
+    """
     loaded_loaders = []
+    
     if not accounts:
-        # 요청 간 대기시간 설정 로드
-        config = load_config()
-        request_wait_time = config.get('REQUEST_WAIT_TIME', 0.0)
+        # 익명 크롤링
         print(f"[REQUEST_WAIT_DEBUG] 익명 크롤링 시작 - 요청 간 대기시간: {request_wait_time}초")
         
         loader = instaloader.Instaloader(
@@ -505,16 +527,14 @@ def crawl_and_download(search_terms, target, accounts, search_type, include_imag
             save_metadata=False,
             post_metadata_txt_pattern='',
             dirname_pattern=os.path.join(base_download_path, "unclassified"),
-            max_connection_attempts=3,  # 재시도 횟수를 3회로 제한
-            resume_prefix="resume_anonymous",  # 익명 사용자용 이어받기 활성화 (해시태그 기반)
+            max_connection_attempts=3,
+            resume_prefix="resume_anonymous",
             rate_controller=lambda context: CustomRateController(context, request_wait_time)
         )
         print(f"[REQUEST_WAIT_DEBUG] CustomRateController 적용됨 - 익명 사용자, 추가 대기시간: {request_wait_time}초")
         loaded_loaders.append({'loader': loader, 'username': 'anonymous', 'password': None, 'active': True})
     else:
-        # 요청 간 대기시간 설정 로드
-        config = load_config()
-        request_wait_time = config.get('REQUEST_WAIT_TIME', 0.0)
+        # 계정 크롤링
         print(f"[REQUEST_WAIT_DEBUG] 계정 크롤링 시작 - 요청 간 대기시간: {request_wait_time}초")
         
         for account in accounts:
@@ -541,30 +561,33 @@ def crawl_and_download(search_terms, target, accounts, search_type, include_imag
                 
                 # LOGIN_HISTORY 업데이트 (최근 사용한 계정을 맨 앞으로)
                 login_history = config.get('LOGIN_HISTORY', [])
-                # 기존 항목 제거 (중복 방지)
                 login_history = [hist for hist in login_history if hist['username'] != account['INSTAGRAM_USERNAME']]
-                # 새 항목을 맨 앞에 추가
                 login_history.insert(0, {
                     'username': account['INSTAGRAM_USERNAME'],
                     'password': account['INSTAGRAM_PASSWORD'],
                     'download_path': account['DOWNLOAD_PATH']
                 })
-                # 최대 10개까지만 유지
                 config['LOGIN_HISTORY'] = login_history[:10]
                 
                 save_config(config)
             else:
                 print(f"로그인 실패: {account['INSTAGRAM_USERNAME']}")
     
+    return loaded_loaders
+
+def process_downloads(loaded_loaders, search_terms, target, search_type, include_images, include_videos, 
+                     include_reels, include_human_classify, include_upscale, progress_queue, stop_event, 
+                     base_download_path, append_status, root, download_directory_var, allow_duplicate,
+                     update_overall_progress, update_current_progress, update_eta, start_time, total_terms,
+                     request_wait_time):
+    """
+    실제 다운로드를 처리합니다.
+    """
     account_index = 0
     total_accounts = len(loaded_loaders)
+    last_processed_term = None
     
     from ..processing.post_processing import process_images
-    
-    # 요청 간 대기시간 설정 로드
-    config = load_config()
-    request_wait_time = config.get('REQUEST_WAIT_TIME', 0.0)
-    last_processed_term = None
     
     try:
         while account_index < total_accounts:
@@ -587,19 +610,19 @@ def crawl_and_download(search_terms, target, accounts, search_type, include_imag
                     if update_overall_progress and total_terms:
                         update_overall_progress(i, total_terms, term)
                     
-                    # 현재 프로필 진행률 초기화 (제거됨)
-                    
                     # 예상 완료 시간 업데이트
                     if update_eta and start_time:
                         update_eta(start_time, i, total_terms)
                     
                     progress_queue.put(("term_progress", term, "콘텐츠 다운로드 시작", L.context.username))
+                    
+                    # 다운로드 실행
                     if search_type == 'hashtag':
                         download_posts(L, current_username, term, search_type, target,
                                        include_images, include_videos, progress_queue, stop_event, base_download_path)
                     else:
                         user_download_with_profiles(L, term, target, include_images, include_reels,
-                                                    progress_queue, stop_event, allow_duplicate, base_download_path, search_type)
+                                                   progress_queue, stop_event, allow_duplicate, base_download_path, search_type)
                     
                     # 다운로드 완료 후 처리
                     if include_human_classify and not stop_event.is_set():
@@ -630,6 +653,7 @@ def crawl_and_download(search_terms, target, accounts, search_type, include_imag
                     else:
                         # 인물 분류가 체크되어 있지 않으면 다운로드 완료 후 즉시 검색 목록에서 삭제
                         progress_queue.put(("term_complete", term, "다운로드 완료", L.context.username))
+                    
                     if stop_event.is_set():
                         append_status("중지: 다운로드 중지됨.")
                         return
@@ -685,5 +709,46 @@ def crawl_and_download(search_terms, target, accounts, search_type, include_imag
                         break
     finally:
         stop_event.clear()
-        on_complete("크롤링 완료됨.")
 
+def crawl_and_download(search_terms, target, accounts, search_type, include_images, include_videos, include_reels,
+                       include_human_classify, include_upscale, progress_queue, on_complete, stop_event, download_path='download', append_status=None,
+                       root=None, download_directory_var=None, allow_duplicate=False, update_overall_progress=None, 
+                       update_current_progress=None, update_eta=None, start_time=None, total_terms=None):
+    """
+    인스타그램 게시물을 크롤링 및 다운로드하는 메인 함수.
+    """
+    print("크롤링 및 다운로드 시작...")
+    
+    # append_status가 None인 경우 기본 함수 사용
+    if append_status is None:
+        append_status = lambda msg: print(f"[STATUS] {msg}")
+    
+    # 타입 안전성 개선: target이 문자열인 경우 정수로 변환
+    if isinstance(target, str):
+        try:
+            target = int(target)
+        except ValueError:
+            print(f"경고: target을 정수로 변환할 수 없습니다: {target}")
+            target = 0
+    
+    # 1. 환경 설정
+    base_download_path, request_wait_time = setup_download_environment(
+        download_path, include_images, include_videos, include_reels
+    )
+    
+    # 2. 계정 설정
+    loaded_loaders = setup_accounts(
+        accounts, base_download_path, include_videos, include_reels, request_wait_time
+    )
+    
+    # 3. 다운로드 처리
+    process_downloads(
+        loaded_loaders, search_terms, target, search_type, include_images, include_videos,
+        include_reels, include_human_classify, include_upscale, progress_queue, stop_event,
+        base_download_path, append_status, root, download_directory_var, allow_duplicate,
+        update_overall_progress, update_current_progress, update_eta, start_time, total_terms,
+        request_wait_time
+    )
+    
+    # 4. 완료 처리
+    on_complete("크롤링 완료됨.") 
