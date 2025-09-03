@@ -83,7 +83,20 @@ if exist "%INSTA_ENV_PATH%\Scripts\python.exe" (
     if !UPDATE_NEEDED! == 1 (
         echo [INFO] requirements 업데이트 중...
         call "%INSTA_ENV_PATH%\Scripts\activate.bat"
-        pip install -r %INSTA_REQ% --upgrade
+        
+        REM 변경된 패키지만 재설치 (git 저장소의 경우)
+        for /f "usebackq delims=" %%i in ("%INSTA_REQ%") do (
+            set "line=%%i"
+            echo !line! | findstr /i "git+" >nul
+            if !errorlevel! == 0 (
+                echo [INFO] 재설치: !line!
+                pip install "!line!" --force-reinstall --no-deps >nul 2>&1
+            ) else (
+                echo [INFO] 업데이트: !line!
+                pip install "!line!" --upgrade >nul 2>&1
+            )
+        )
+        
         if errorlevel 1 (
             echo [WARN] requirements 업데이트 중 일부 오류가 발생했습니다.
         ) else (
@@ -109,8 +122,8 @@ if exist "%INSTA_ENV_PATH%\Scripts\python.exe" (
 
             echo [INFO] requirements_insta.txt 설치...
             call "%INSTA_ENV_PATH%\Scripts\activate.bat"
-            "%INSTA_ENV_PATH%\Scripts\python.exe" -m pip install --upgrade pip
-            pip install -r %INSTA_REQ%
+            "%INSTA_ENV_PATH%\Scripts\python.exe" -m pip install --upgrade pip >nul 2>&1
+            pip install -r %INSTA_REQ% >nul 2>&1
             if errorlevel 1 (
                 echo [ERROR] insta_venv requirements 설치 실패.
                 echo [INFO] 크롤링 기능을 사용할 수 없습니다. 스크립트를 계속 진행합니다.
@@ -146,7 +159,20 @@ if exist "%CLASSIFY_ENV_PATH%\Scripts\python.exe" (
     if !CLASSIFY_UPDATE_NEEDED! == 1 (
         echo [INFO] requirements 업데이트 중...
         call "%CLASSIFY_ENV_PATH%\Scripts\activate.bat"
-        pip install -r %CLASSIFY_REQ% --upgrade
+        
+        REM 변경된 패키지만 재설치 (git 저장소의 경우)
+        for /f "usebackq delims=" %%i in ("%CLASSIFY_REQ%") do (
+            set "line=%%i"
+            echo !line! | findstr /i "git+" >nul
+            if !errorlevel! == 0 (
+                echo [INFO] 재설치: !line!
+                pip install "!line!" --force-reinstall --no-deps >nul 2>&1
+            ) else (
+                echo [INFO] 업데이트: !line!
+                pip install "!line!" --upgrade >nul 2>&1
+            )
+        )
+        
         if errorlevel 1 (
             echo [WARN] requirements 업데이트 중 일부 오류가 발생했습니다.
         ) else (
@@ -172,9 +198,9 @@ if exist "%CLASSIFY_ENV_PATH%\Scripts\python.exe" (
 
             echo [INFO] requirements_classify.txt 설치...
             call "%CLASSIFY_ENV_PATH%\Scripts\activate.bat"
-            "%CLASSIFY_ENV_PATH%\Scripts\python.exe" -m pip install --upgrade pip
-            pip install torch==2.0.1+cu118 torchvision==0.15.2+cu118 torchaudio==2.0.2+cu118 --index-url https://download.pytorch.org/whl/cu118
-            pip install -r %CLASSIFY_REQ%
+            "%CLASSIFY_ENV_PATH%\Scripts\python.exe" -m pip install --upgrade pip >nul 2>&1
+            pip install torch==2.0.1+cu118 torchvision==0.15.2+cu118 torchaudio==2.0.2+cu118 --index-url https://download.pytorch.org/whl/cu118 >nul 2>&1
+            pip install -r %CLASSIFY_REQ% >nul 2>&1
             if errorlevel 1 (
                 echo [ERROR] classify_venv requirements 설치 실패.
                 echo [INFO] 분류 기능을 사용할 수 없습니다.

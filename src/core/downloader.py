@@ -80,7 +80,7 @@ def instaloader_login(username, password, download_path, include_videos=False, i
         save_metadata=False,
         post_metadata_txt_pattern='',
         dirname_pattern=download_path,
-        max_connection_attempts=3,  # 재시도 횟수를 3회로 제한
+        max_connection_attempts=10,  # 재시도 횟수를 3회로 제한
         resume_prefix=resume_prefix,  # 기본 이어받기 활성화 (프로필별로 덮어씀)
         rate_controller=lambda context: CustomRateController(context, request_wait_time)
     )

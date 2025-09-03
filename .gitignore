@@ -70,3 +70,9 @@ models/
 # Temporary files
 *.tmp
 *.temp
+
+# Batch file generated files (package names as files)
+2.32.4
+2.5.0
+44.0.0
+78.1.1

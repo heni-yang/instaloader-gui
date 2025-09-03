@@ -154,19 +154,58 @@ def mask_username(username: str) -> str:
 # 레거시 print 함수를 대체하는 컨텍스트별 함수들
 def print_login_success(username: str) -> None:
     """로그인 성공 메시지 안전 출력"""
-    safe_print(f"로그인 성공: {username}", username)
+    # 중복 출력 방지를 위해 print만 사용 (logger는 별도로 호출)
+    safe_message = f"로그인 성공: {username}"
+    if username:
+        masked_username = get_secure_logger().mask_username(username)
+        safe_message = safe_message.replace(username, masked_username)
+    safe_message = get_secure_logger().mask_sensitive_data(safe_message)
+    
+    print(safe_message)
+    # 로그에는 별도로 기록 (중복 방지)
+    logger.info(f"로그인 성공: {get_secure_logger().mask_username(username) if username else 'unknown'}")
 
 def print_login_failure(username: str, reason: str = "잘못된 아이디/비밀번호") -> None:
     """로그인 실패 메시지 안전 출력"""
-    safe_error(f"{reason}: {username}", username)
+    # 중복 출력 방지를 위해 print만 사용 (logger는 별도로 호출)
+    safe_message = f"{reason}: {username}"
+    if username:
+        masked_username = get_secure_logger().mask_username(username)
+        safe_message = safe_message.replace(username, masked_username)
+    safe_message = get_secure_logger().mask_sensitive_data(safe_message)
+    
+    print(safe_message)
+    # 로그에는 별도로 기록 (중복 방지)
+    logger.error(f"{reason}: {get_secure_logger().mask_username(username) if username else 'unknown'}")
 
 def print_session_loaded(username: str) -> None:
     """세션 로드 성공 메시지 안전 출력"""
-    safe_print(f"세션 로드 성공: {username}", username)
+    # 중복 출력 방지를 위해 print만 사용 (logger는 별도로 호출)
+    safe_message = f"세션 로드 성공: {username}"
+    if username:
+        masked_username = get_secure_logger().mask_username(username)
+        safe_message = safe_message.replace(username, masked_username)
+    safe_message = get_secure_logger().mask_sensitive_data(safe_message)
+    
+    print(safe_message)
+    # 로그에는 별도로 기록 (중복 방지)
+    logger.info(f"세션 로드 성공: {get_secure_logger().mask_username(username) if username else 'unknown'}")
 
 def print_account_switch(from_username: str, to_username: str) -> None:
     """계정 전환 메시지 안전 출력"""
-    safe_print(f"계정 전환: {from_username} → {to_username}", from_username)
+    # 중복 출력 방지를 위해 print만 사용 (logger는 별도로 호출)
+    safe_message = f"계정 전환: {from_username} → {to_username}"
+    if from_username:
+        masked_from_username = get_secure_logger().mask_username(from_username)
+        safe_message = safe_message.replace(from_username, masked_from_username)
+    if to_username:
+        masked_to_username = get_secure_logger().mask_username(to_username)
+        safe_message = safe_message.replace(to_username, masked_to_username)
+    safe_message = get_secure_logger().mask_sensitive_data(safe_message)
+    
+    print(safe_message)
+    # 로그에는 별도로 기록 (중복 방지)
+    logger.info(f"계정 전환: {get_secure_logger().mask_username(from_username) if from_username else 'unknown'} → {get_secure_logger().mask_username(to_username) if to_username else 'unknown'}")
 
 def print_debug_rate_controller(username: str, wait_time: float) -> None:
     """레이트 컨트롤러 디버그 메시지 안전 출력"""
