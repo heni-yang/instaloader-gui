@@ -64,6 +64,36 @@ echo 2) [크롤링용] insta_venv 환경 확인
 echo ==============================================================================
 if exist "%INSTA_ENV_PATH%\Scripts\python.exe" (
     echo [INFO] insta_venv 이미 존재합니다.
+    
+    REM requirements 파일이 변경되었는지 확인
+    set "REQ_CHECK_FILE=%INSTA_ENV_PATH%\requirements_check.txt"
+    set "UPDATE_NEEDED=0"
+    
+    if not exist "!REQ_CHECK_FILE!" (
+        set "UPDATE_NEEDED=1"
+        echo [INFO] 첫 실행이거나 requirements 체크 파일이 없습니다.
+    ) else (
+        fc /b "%INSTA_REQ%" "!REQ_CHECK_FILE!" >nul 2>&1
+        if errorlevel 1 (
+            set "UPDATE_NEEDED=1"
+            echo [INFO] requirements 파일이 변경되었습니다.
+        )
+    )
+    
+    if !UPDATE_NEEDED! == 1 (
+        echo [INFO] requirements 업데이트 중...
+        call "%INSTA_ENV_PATH%\Scripts\activate.bat"
+        pip install -r %INSTA_REQ% --upgrade
+        if errorlevel 1 (
+            echo [WARN] requirements 업데이트 중 일부 오류가 발생했습니다.
+        ) else (
+            echo [INFO] requirements 업데이트 완료.
+            copy "%INSTA_REQ%" "!REQ_CHECK_FILE!" >nul
+        )
+        call "%INSTA_ENV_PATH%\Scripts\deactivate.bat"
+    ) else (
+        echo [INFO] requirements 변경사항 없음. 업데이트를 건너뜁니다.
+    )
 ) else (
     if not defined PYTHON_313 (
         echo [ERROR] Python 3.13 경로를 찾지 못했습니다. insta_venv를 생성할 수 없습니다.
@@ -97,6 +127,36 @@ echo 3) [분류용] classify_venv 환경 확인
 echo ==============================================================================
 if exist "%CLASSIFY_ENV_PATH%\Scripts\python.exe" (
     echo [INFO] classify_venv 이미 존재합니다.
+    
+    REM requirements 파일이 변경되었는지 확인
+    set "CLASSIFY_REQ_CHECK_FILE=%CLASSIFY_ENV_PATH%\requirements_check.txt"
+    set "CLASSIFY_UPDATE_NEEDED=0"
+    
+    if not exist "!CLASSIFY_REQ_CHECK_FILE!" (
+        set "CLASSIFY_UPDATE_NEEDED=1"
+        echo [INFO] 첫 실행이거나 requirements 체크 파일이 없습니다.
+    ) else (
+        fc /b "%CLASSIFY_REQ%" "!CLASSIFY_REQ_CHECK_FILE!" >nul 2>&1
+        if errorlevel 1 (
+            set "CLASSIFY_UPDATE_NEEDED=1"
+            echo [INFO] requirements 파일이 변경되었습니다.
+        )
+    )
+    
+    if !CLASSIFY_UPDATE_NEEDED! == 1 (
+        echo [INFO] requirements 업데이트 중...
+        call "%CLASSIFY_ENV_PATH%\Scripts\activate.bat"
+        pip install -r %CLASSIFY_REQ% --upgrade
+        if errorlevel 1 (
+            echo [WARN] requirements 업데이트 중 일부 오류가 발생했습니다.
+        ) else (
+            echo [INFO] requirements 업데이트 완료.
+            copy "%CLASSIFY_REQ%" "!CLASSIFY_REQ_CHECK_FILE!" >nul
+        )
+        call "%CLASSIFY_ENV_PATH%\Scripts\deactivate.bat"
+    ) else (
+        echo [INFO] requirements 변경사항 없음. 업데이트를 건너뜁니다.
+    )
 ) else (
     if not defined PYTHON_310 (
         echo [WARN] Python 3.10 경로를 찾지 못했습니다. classify_venv를 생성할 수 없습니다.
