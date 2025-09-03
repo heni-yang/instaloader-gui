@@ -9,6 +9,7 @@ from ..utils.secure_logging import (
     print_login_success, print_login_failure, print_session_loaded,
     print_account_switch, print_debug_rate_controller
 )
+from ..utils.logger import log_download_failure, log_download_success, log_account_switch
 
 # 커스텀 RateController 클래스 (단순화된 버전)
 class CustomRateController(RateController):
@@ -255,15 +256,20 @@ def download_posts(
         L.dirname_pattern = original_dirname
         progress_queue.put(("term_progress", search_term, 1, username))
         print(f"{search_term} 다운로드 완료")
+        # 성공 로그 기록
+        log_download_success(search_term, search_term, "hashtag", username, 1)
         # term_complete는 crawl_and_download에서 처리하므로 여기서는 전송하지 않음
     except instaloader.exceptions.LoginRequiredException as e:
         print(f"로그인 필요 오류: {e}")
+        log_download_failure(search_term, search_term, "로그인 필요", str(e), "hashtag", username)
         progress_queue.put(("term_error", search_term, "로그인 필요", username))
     except instaloader.exceptions.ConnectionException as e:
         print(f"연결 오류: {e}")
+        log_download_failure(search_term, search_term, "연결 오류", str(e), "hashtag", username)
         progress_queue.put(("term_error", search_term, f"연결 오류: {e}", username))
     except Exception as e:
         print(f"다운로드 오류: {e}")
+        log_download_failure(search_term, search_term, "다운로드 오류", str(e), "hashtag", username)
         progress_queue.put(("account_switch_needed", username))
 
 def rename_directories(base_path, search_type, old_name, new_name):
@@ -366,6 +372,7 @@ def user_download_with_profiles(L, search_user, target, include_images, include_
                         # 오류 유형별 처리
                         if "does not exist" in error_msg:
                             # 프로필이 존재하지 않는 경우
+                            log_download_failure(old_username, old_username, "프로필 없음", error_msg, "user", L.context.username)
                             stored_profile_id = get_profile_id_for_username(old_username)
                             if stored_profile_id:
                                 add_non_existent_profile_id(stored_profile_id, old_username)
@@ -378,9 +385,11 @@ def user_download_with_profiles(L, search_user, target, include_images, include_
                             progress_queue.put(("term_error", old_username, error_msg, L.context.username))
                         elif "401 Unauthorized" in error_msg or "Server Error" in error_msg:
                             # Instagram API 인증 오류 또는 서버 오류
+                            log_download_failure(old_username, old_username, "서버 오류", error_msg, "user", L.context.username)
                             progress_queue.put(("term_error", old_username, "Instagram 서버 오류 - 잠시 후 다시 시도해주세요", L.context.username))
                         else:
                             # 기타 오류
+                            log_download_failure(old_username, old_username, "프로필 조회 실패", error_msg, "user", L.context.username)
                             progress_queue.put(("term_error", old_username, f"프로필 조회 실패: {error_msg}", L.context.username))
                         return
             else:
@@ -395,6 +404,7 @@ def user_download_with_profiles(L, search_user, target, include_images, include_
                     # 오류 유형별 처리
                     if "does not exist" in error_msg:
                         # 프로필이 존재하지 않는 경우
+                        log_download_failure(search_user, search_user, "프로필 없음", error_msg, "user", L.context.username)
                         stored_profile_id = get_profile_id_for_username(search_user)
                         if stored_profile_id:
                             add_non_existent_profile_id(stored_profile_id, search_user)
@@ -407,9 +417,11 @@ def user_download_with_profiles(L, search_user, target, include_images, include_
                         progress_queue.put(("term_error", search_user, error_msg, L.context.username))
                     elif "401 Unauthorized" in error_msg or "Server Error" in error_msg:
                         # Instagram API 인증 오류 또는 서버 오류
+                        log_download_failure(search_user, search_user, "서버 오류", error_msg, "user", L.context.username)
                         progress_queue.put(("term_error", search_user, "Instagram 서버 오류 - 잠시 후 다시 시도해주세요", L.context.username))
                     else:
                         # 기타 오류
+                        log_download_failure(search_user, search_user, "프로필 조회 실패", error_msg, "user", L.context.username)
                         progress_queue.put(("term_error", search_user, f"프로필 조회 실패: {error_msg}", L.context.username))
                     return
 
@@ -453,6 +465,10 @@ def user_download_with_profiles(L, search_user, target, include_images, include_
             
             # username이 변경된 경우 old_username을 전달하여 검색목록에서 제거
             completed_username = old_username if old_username != profile.username else profile.username
+            
+            # 성공 로그 기록 (다운로드된 게시물 수는 정확히 알 수 없으므로 0으로 표시)
+            log_download_success(completed_username, completed_username, "user", L.context.username, 0)
+            
             # term_complete는 crawl_and_download에서 처리하므로 여기서는 전송하지 않음
 
             if include_reels:
@@ -479,6 +495,9 @@ def user_download_with_profiles(L, search_user, target, include_images, include_
             
             # "Private but not followed" 오류 감지 및 저장
             if "Private but not followed" in error_msg:
+                # 비공개 프로필 로그 기록
+                log_download_failure(search_user, search_user, "비공개 프로필", error_msg, "user", L.context.username)
+                
                 # 저장된 profile-id가 있으면 해당 ID를 비공개 프로필로 저장
                 stored_profile_id = get_profile_id_for_username(search_user)
                 if stored_profile_id:
@@ -494,6 +513,8 @@ def user_download_with_profiles(L, search_user, target, include_images, include_
                 # 비공개 프로필로 저장된 경우 검색목록에서 제거
                 progress_queue.put(("term_complete", search_user, f"비공개 프로필로 저장됨: {error_msg}", L.context.username))
             else:
+                # 일반 다운로드 오류 로그 기록
+                log_download_failure(search_user, search_user, "다운로드 오류", error_msg, "user", L.context.username)
                 progress_queue.put(("term_error", search_user, f"콘텐츠 다운로드 오류: {error_msg}", L.context.username))
             #raise
     download_content()
@@ -691,6 +712,7 @@ def process_downloads(loaded_loaders, search_terms, target, search_type, include
                     account_index = (account_index + 1) % total_accounts
                     new_username = loaded_loaders[account_index]['username']
                     print_account_switch(current_username, new_username)
+                    log_account_switch(current_username, new_username, "429 오류로 인한 계정 전환")
                     progress_queue.put(("account_switch", new_username, "계정 전환 중..."))
                     
                     # 계정 전환 시 LAST_ACCOUNT_USED 업데이트
@@ -720,10 +742,12 @@ def process_downloads(loaded_loaders, search_terms, target, search_type, include
                     if account_index < total_accounts:
                         next_username = loaded_loaders[account_index]['username']
                         print_account_switch(current_username, next_username)
+                        log_account_switch(current_username, next_username, "재로그인 실패로 인한 계정 전환")
                         progress_queue.put(("account_switch", loaded_loaders[account_index]['username'], "계정 전환 중..."))
                         continue
                     else:
                         for term in search_terms:
+                            log_download_failure(term, term, "모든 계정 차단", "재로그인 실패로 인한 모든 계정 차단", search_type, current_username)
                             progress_queue.put(("term_error", term, "모든 계정 차단됨", current_username))
                         break
     finally:
