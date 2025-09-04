@@ -284,6 +284,16 @@ class GUIController:
             # 중복 다운로드 허용 설정 저장
             self.config['ALLOW_DUPLICATE'] = self.search_panel.allow_duplicate_var.get()
             
+            # Anti-Detection 모드 저장
+            from ...core.anti_detection import get_mode_from_display_value, get_anti_detection_settings
+            display_value = self.search_panel.anti_detection_mode_var.get()
+            mode_key = get_mode_from_display_value(display_value)
+            self.config['ANTI_DETECTION_MODE'] = mode_key
+            
+            # 호환성을 위해 기존 REQUEST_WAIT_TIME도 업데이트
+            settings = get_anti_detection_settings(mode_key)
+            self.config['REQUEST_WAIT_TIME'] = settings['additional_wait_time']
+            
             # 설정 파일 저장
             save_config(self.config)
             self.status_panel.append_status("설정이 저장되었습니다.")

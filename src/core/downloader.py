@@ -685,6 +685,7 @@ def process_downloads(loaded_loaders, search_terms, target, search_type, include
             loader_dict = loaded_loaders[account_index]
             L = loader_dict['loader']
             current_username = loader_dict['username']
+            
             try:
                 for i, term in enumerate(search_terms):
                     if stop_event.is_set():
@@ -835,7 +836,9 @@ def crawl_and_download(search_terms, target, accounts, search_type, include_imag
     # Anti-Detection 모드 설정 로드
     config = load_config()
     from .anti_detection import migrate_old_config
-    config = migrate_old_config(config)
+    # ANTI_DETECTION_MODE가 없는 경우에만 마이그레이션 실행
+    if 'ANTI_DETECTION_MODE' not in config:
+        config = migrate_old_config(config)
     anti_detection_mode = config.get('ANTI_DETECTION_MODE', 'ON')
     print(f"[ANTI-DETECTION] 크롤링 시작 - 모드: {anti_detection_mode}")
     
