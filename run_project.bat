@@ -87,7 +87,7 @@ if exist "%INSTA_ENV_PATH%\Scripts\python.exe" (
         REM 변경된 패키지만 재설치 (git 저장소의 경우)
         for /f "usebackq delims=" %%i in ("%INSTA_REQ%") do (
             set "line=%%i"
-            echo !line! | findstr /i "git+" >nul
+            echo "!line!" | findstr /i "git+" >nul
             if !errorlevel! == 0 (
                 echo [INFO] 재설치: !line!
                 pip install "!line!" --force-reinstall --no-deps >nul 2>&1
@@ -163,7 +163,7 @@ if exist "%CLASSIFY_ENV_PATH%\Scripts\python.exe" (
         REM 변경된 패키지만 재설치 (git 저장소의 경우)
         for /f "usebackq delims=" %%i in ("%CLASSIFY_REQ%") do (
             set "line=%%i"
-            echo !line! | findstr /i "git+" >nul
+            echo "!line!" | findstr /i "git+" >nul
             if !errorlevel! == 0 (
                 echo [INFO] 재설치: !line!
                 pip install "!line!" --force-reinstall --no-deps >nul 2>&1
