@@ -53,8 +53,12 @@ class SearchPanel:
         self.download_directory_var = tk.StringVar(value=last_download_path)
         
         # 기타 변수들 - 설정에서 로드
+        from ...core.anti_detection import migrate_old_config, get_display_value_from_mode
+        config = migrate_old_config(config)  # 기존 설정 마이그레이션
+        
         self.allow_duplicate_var = tk.BooleanVar(value=config.get('ALLOW_DUPLICATE', False))
         self.wait_time_var = tk.StringVar(value=str(config.get('REQUEST_WAIT_TIME', 0.0)))
+        self.anti_detection_mode_var = tk.StringVar(value=get_display_value_from_mode(config.get('ANTI_DETECTION_MODE', 'ON')))
         self.word_text = None
         self.post_count_entry = None
         
@@ -126,15 +130,40 @@ class SearchPanel:
         # 중복 다운로드 허용
         ttk.Checkbutton(search_type_frame, text="중복 다운로드 허용", variable=self.allow_duplicate_var).grid(row=3, column=0, columnspan=2, sticky='w', padx=5, pady=5)
         
-        # 요청 간 대기시간 설정
-        rate_limit_frame = ttk.LabelFrame(search_type_frame, text="요청 간 대기시간", padding=5)
-        rate_limit_frame.grid(row=4, column=0, columnspan=2, sticky='ew', padx=5, pady=5)
+        # Anti-Detection 모드 설정
+        from ...core.anti_detection import get_mode_display_values
         
-        ttk.Label(rate_limit_frame, text="추가 대기시간 (초, 0=자동):").grid(row=0, column=0, sticky='w', padx=5, pady=2)
-        wait_time_entry = ttk.Entry(rate_limit_frame, textvariable=self.wait_time_var, width=10)
-        wait_time_entry.grid(row=0, column=1, sticky='w', padx=5, pady=2)
+        anti_detection_frame = ttk.LabelFrame(search_type_frame, text="🛡️ Anti-Detection 모드", padding=5)
+        anti_detection_frame.grid(row=4, column=0, columnspan=2, sticky='ew', padx=5, pady=5)
         
-        ttk.Label(rate_limit_frame, text="(0초: Instaloader 자동 제어, 1초 이상: 추가 대기)").grid(row=1, column=0, columnspan=2, sticky='w', padx=5, pady=2)
+        ttk.Label(anti_detection_frame, text="크롤링 보안 모드:").grid(row=0, column=0, sticky='w', padx=5, pady=2)
+        
+        mode_values = get_mode_display_values()
+        self.anti_detection_combo = ttk.Combobox(
+            anti_detection_frame, 
+            textvariable=self.anti_detection_mode_var,
+            values=mode_values,
+            state="readonly",
+            width=25
+        )
+        self.anti_detection_combo.grid(row=0, column=1, sticky='w', padx=5, pady=2)
+        
+        # 모드 설명 (동적 업데이트)
+        self.mode_description_var = tk.StringVar()
+        description_label = ttk.Label(
+            anti_detection_frame, 
+            textvariable=self.mode_description_var, 
+            foreground="gray", 
+            wraplength=400,
+            font=('Arial', 9)
+        )
+        description_label.grid(row=1, column=0, columnspan=2, sticky='w', padx=5, pady=(2, 5))
+        
+        # 모드 변경 이벤트 바인딩
+        self.anti_detection_combo.bind('<<ComboboxSelected>>', self._on_anti_detection_mode_change)
+        
+        # 초기 설명 설정
+        self._update_mode_description()
         
         # 이벤트 바인딩
         self._bind_events(hashtag_frame, user_id_frame, include_images_check_hashtag, include_videos_check_hashtag,
@@ -552,6 +581,16 @@ class SearchPanel:
             config['ALLOW_DUPLICATE'] = self.allow_duplicate_var.get()
             config['REQUEST_WAIT_TIME'] = float(self.wait_time_var.get())
             
+            # Anti-Detection 모드 저장
+            from ...core.anti_detection import get_mode_from_display_value, get_anti_detection_settings
+            display_value = self.anti_detection_mode_var.get()
+            mode_key = get_mode_from_display_value(display_value)
+            config['ANTI_DETECTION_MODE'] = mode_key
+            
+            # 호환성을 위해 기존 REQUEST_WAIT_TIME도 업데이트
+            settings = get_anti_detection_settings(mode_key)
+            config['REQUEST_WAIT_TIME'] = settings['additional_wait_time']
+            
             save_config(config)
             
         except Exception as e:
@@ -738,3 +777,19 @@ class SearchPanel:
             
         except Exception as e:
             print(f"검색어 저장 오류: {e}")
+    
+    def _on_anti_detection_mode_change(self, event=None):
+        """Anti-Detection 모드 변경 시 호출"""
+        self._update_mode_description()
+        self._save_config()
+
+    def _update_mode_description(self):
+        """모드 설명 업데이트"""
+        from ...core.anti_detection import get_anti_detection_settings, get_mode_from_display_value
+        
+        display_value = self.anti_detection_mode_var.get()
+        mode_key = get_mode_from_display_value(display_value)
+        
+        settings = get_anti_detection_settings(mode_key)
+        description = f"{settings['description']} - {settings['use_case']}"
+        self.mode_description_var.set(description)
