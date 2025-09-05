@@ -23,7 +23,8 @@ instaloader-gui/
 │   │       └── queue_handler.py      # 큐 기반 이벤트 처리
 │   ├── core/                    # 🔧 핵심 기능
 │   │   ├── downloader.py        # Instagram 크롤링 및 다운로드
-│   │   └── profile_manager.py   # 프로필 관리 (존재하지 않는/비공개 프로필)
+│   │   ├── profile_manager.py   # 프로필 관리 (존재하지 않는/비공개 프로필)
+│   │   └── anti_detection.py    # Anti-Detection 4단계 시스템
 │   ├── processing/              # 🖼️ 후처리 관련
 │   │   ├── classifier.py        # 이미지 분류 래퍼
 │   │   ├── post_processing.py   # 후처리 제어 (분류 + 업스케일링)
@@ -34,6 +35,8 @@ instaloader-gui/
 │   ├── utils/                   # 🛠️ 유틸리티
 │   │   ├── config.py            # 설정 파일 관리 (JSON 기반)
 │   │   ├── environment.py       # 환경 설정 및 경로 관리
+│   │   ├── security.py          # Fernet 암호화 및 보안 관리
+│   │   ├── secure_logging.py    # 보안 로깅 (민감정보 마스킹)
 │   │   ├── file_utils.py        # 파일 관련 유틸리티
 │   │   └── logger.py            # 로깅 시스템
 │   └── main.py                  # 애플리케이션 진입점
@@ -96,6 +99,10 @@ python -m src.main
 - **profile_manager.py**: 프로필 관리
   - 존재하지 않는 프로필 관리
   - 비공개 프로필 관리
+- **anti_detection.py**: Anti-Detection 4단계 시스템
+  - OFF/FAST/ON/SAFE 모드 설정
+  - 모드별 Rate Controller 최적화
+  - 기존 설정 자동 마이그레이션
 
 ### 후처리 (`src/processing/`)
 - **classifier.py**: 이미지 분류 래퍼
@@ -108,6 +115,12 @@ python -m src.main
 ### 유틸리티 (`src/utils/`)
 - **config.py**: JSON 기반 설정 파일 관리
 - **environment.py**: 환경 설정 및 경로 관리
+- **security.py**: Fernet 암호화 및 보안 관리
+  - 머신 지문 기반 암호화 키 생성
+  - 계정 비밀번호 안전 저장/복호화
+- **secure_logging.py**: 보안 로깅 시스템
+  - 민감정보 자동 마스킹 (사용자명, 비밀번호)
+  - 안전한 로그 출력 함수들
 - **logger.py**: 로깅 시스템
 - **file_utils.py**: 파일 관련 유틸리티
 
