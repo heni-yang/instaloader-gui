@@ -1,0 +1,273 @@
+# src/gui/dialogs/account_management.py
+"""
+계정 관리 관련 함수들을 모아놓은 모듈
+기존 gui.py의 UI는 그대로 두고 내부 로직만 분리
+"""
+import os
+import tkinter as tk
+from tkinter import ttk, filedialog, messagebox
+from ...utils.config import load_config, save_config
+
+def add_account(accounts_listbox, loaded_accounts, append_status_func):
+    """
+    계정을 추가합니다.
+    
+    Returns:
+        tk.Toplevel: 생성된 다이얼로그 창
+    """
+    from ...utils.config import load_config, save_config
+    
+    dialog = tk.Toplevel()
+    dialog.title("계정 추가")
+    dialog.geometry("500x400")
+    dialog.transient()
+    # dialog.grab_set()  # 메인창 사용 가능하도록 주석 처리
+    
+    # 중앙 정렬
+    dialog.columnconfigure(0, weight=1)
+    dialog.rowconfigure(0, weight=1)
+    
+    main_frame = ttk.Frame(dialog, padding="10")
+    main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+    main_frame.columnconfigure(1, weight=1)
+    
+    # 로그인 히스토리에서 기존 계정 정보 로드
+    config = load_config()
+    login_history = config.get('LOGIN_HISTORY', [])
+    
+    # 사용자명 (콤보박스로 변경하여 히스토리 표시)
+    ttk.Label(main_frame, text="인스타그램 사용자명:").grid(row=0, column=0, sticky=tk.W, pady=5)
+    username_var = tk.StringVar()
+    username_history = [hist['username'] for hist in login_history]
+    username_combo = ttk.Combobox(main_frame, textvariable=username_var, values=username_history, state="normal")
+    username_combo.grid(row=0, column=1, sticky=(tk.W, tk.E), pady=5, padx=(10, 0))
+    
+    # 비밀번호
+    ttk.Label(main_frame, text="비밀번호:").grid(row=1, column=0, sticky=tk.W, pady=5)
+    password_var = tk.StringVar()
+    password_entry = ttk.Entry(main_frame, textvariable=password_var, show="*")
+    password_entry.grid(row=1, column=1, sticky=(tk.W, tk.E), pady=5, padx=(10, 0))
+    
+    # 다운로드 경로
+    ttk.Label(main_frame, text="다운로드 경로:").grid(row=2, column=0, sticky=tk.W, pady=5)
+    download_path_var = tk.StringVar()
+    download_path_entry = ttk.Entry(main_frame, textvariable=download_path_var)
+    download_path_entry.grid(row=2, column=1, sticky=(tk.W, tk.E), pady=5, padx=(10, 0))
+    
+    # 사용자명 선택 시 자동 완성 기능
+    def on_username_select(event=None):
+        selected_username = username_var.get()
+        for hist in login_history:
+            if hist['username'] == selected_username:
+                password_var.set(hist['password'])
+                download_path_var.set(hist['download_path'])
+                break
+    
+    username_combo.bind('<<ComboboxSelected>>', on_username_select)
+    username_combo.bind('<KeyRelease>', lambda e: dialog.after(100, on_username_select) if username_var.get() in username_history else None)
+    
+    # 경로 선택 버튼
+    def select_path():
+        # 다이얼로그를 부모 창으로 설정하여 모달 동작 방지
+        path = filedialog.askdirectory(parent=dialog)
+        if path:
+            download_path_var.set(path)
+    
+    ttk.Button(main_frame, text="경로 선택", command=select_path).grid(row=2, column=2, padx=(10, 0))
+    
+    # 저장 버튼
+    def save():
+        username = username_var.get().strip()
+        password = password_var.get().strip()
+        download_path = download_path_var.get().strip()
+        
+        if not username or not password:
+            messagebox.showerror("오류", "사용자명과 비밀번호를 입력하세요.")
+            return
+        
+        if not download_path:
+            messagebox.showerror("오류", "다운로드 경로를 선택하세요.")
+            return
+        
+        # 중복 확인
+        for acc in loaded_accounts:
+            if isinstance(acc, dict) and acc.get('INSTAGRAM_USERNAME') == username:
+                messagebox.showerror("오류", "이미 존재하는 사용자명입니다.")
+                return
+        
+        # 새 계정 추가
+        new_account = {
+            'INSTAGRAM_USERNAME': username,
+            'INSTAGRAM_PASSWORD': password,
+            'DOWNLOAD_PATH': download_path
+        }
+        loaded_accounts.append(new_account)
+        
+        # 리스트박스에 추가
+        accounts_listbox.insert(tk.END, username)
+        
+        # 설정 저장 및 LOGIN_HISTORY 업데이트
+        config = load_config()
+        config['ACCOUNTS'] = loaded_accounts
+        
+        # LOGIN_HISTORY에 추가 (중복 제거)
+        login_history = config.get('LOGIN_HISTORY', [])
+        # 기존 항목 제거 (중복 방지)
+        login_history = [hist for hist in login_history if hist['username'] != username]
+        # 새 항목을 맨 앞에 추가
+        login_history.insert(0, {
+            'username': username,
+            'password': password,
+            'download_path': download_path
+        })
+        # 최대 10개까지만 유지
+        config['LOGIN_HISTORY'] = login_history[:10]
+        
+        save_config(config)
+        
+        append_status_func(f"계정 추가됨: {username}")
+        dialog.destroy()
+    
+    ttk.Button(main_frame, text="저장", command=save).grid(row=3, column=0, columnspan=3, pady=20)
+    
+    # 포커스 설정
+    username_combo.focus()
+    
+    # 다이얼로그 객체 반환
+    return dialog
+
+def remove_account(accounts_listbox, loaded_accounts, append_status_func):
+    """
+    선택된 계정을 제거합니다.
+    """
+    selection = accounts_listbox.curselection()
+    if not selection:
+        append_status_func("오류: 제거할 계정을 선택하세요.")
+        return
+    
+    index = selection[0]
+    username = accounts_listbox.get(index)
+    
+    result = messagebox.askyesno("확인", f"계정 '{username}'을(를) 제거하시겠습니까?")
+    if not result:
+        return
+    
+    # 계정 제거
+    del loaded_accounts[index]
+    accounts_listbox.delete(index)
+    
+    # 설정 저장
+    config = load_config()
+    config['ACCOUNTS'] = loaded_accounts
+    save_config(config)
+    
+    append_status_func(f"계정 제거됨: {username}")
+
+def remove_session(append_status_func, accounts_listbox=None):
+    """
+    선택된 계정의 세션 파일을 제거하거나, 선택된 계정이 없으면 모든 세션 파일을 제거합니다.
+    """
+    from ...utils.environment import Environment
+    session_dir = Environment.SESSIONS_DIR
+    
+    if not os.path.exists(session_dir):
+        append_status_func("세션 디렉토리가 존재하지 않습니다.")
+        return
+    
+    try:
+        # 계정이 선택되었는지 확인
+        selected_account = None
+        if accounts_listbox:
+            selection = accounts_listbox.curselection()
+            if selection:
+                selected_account = accounts_listbox.get(selection[0])
+        
+        if selected_account:
+            # 선택된 계정의 세션 파일만 삭제
+            session_file = f"{selected_account}.session"
+            session_path = os.path.join(session_dir, session_file)
+            
+            if os.path.exists(session_path):
+                os.remove(session_path)
+                append_status_func(f"세션 파일 삭제됨: {session_file}")
+            else:
+                append_status_func(f"계정 '{selected_account}'의 세션 파일이 없습니다.")
+        else:
+            # 선택된 계정이 없으면 모든 세션 파일 삭제
+            session_files = [f for f in os.listdir(session_dir) if f.endswith('.session')]
+            
+            if session_files:
+                deleted_count = 0
+                for session_file in session_files:
+                    file_path = os.path.join(session_dir, session_file)
+                    try:
+                        os.remove(file_path)
+                        append_status_func(f"세션 파일 삭제됨: {session_file}")
+                        deleted_count += 1
+                    except Exception as e:
+                        append_status_func(f"세션 파일 삭제 실패: {session_file} - {e}")
+                
+                append_status_func(f"총 {deleted_count}개의 세션 파일이 제거되었습니다.")
+            else:
+                append_status_func("삭제할 세션 파일이 없습니다.")
+                
+    except Exception as e:
+        error_msg = f"세션 파일 제거 중 오류: {e}"
+        append_status_func(error_msg)
+        messagebox.showerror("오류", error_msg)
+
+def save_new_account(dialog, username_var, password_var, download_path_var, accounts_listbox, loaded_accounts, append_status_func):
+    """
+    새 계정을 저장합니다.
+    """
+    username = username_var.get().strip()
+    password = password_var.get().strip()
+    download_path = download_path_var.get().strip()
+    
+    if not username or not password:
+        messagebox.showerror("오류", "사용자명과 비밀번호를 입력하세요.")
+        return
+    
+    if not download_path:
+        messagebox.showerror("오류", "다운로드 경로를 선택하세요.")
+        return
+    
+    # 중복 확인
+    for acc in loaded_accounts:
+        if acc['INSTAGRAM_USERNAME'] == username:
+            messagebox.showerror("오류", "이미 존재하는 사용자명입니다.")
+            return
+    
+    # 새 계정 추가
+    new_account = {
+        'INSTAGRAM_USERNAME': username,
+        'INSTAGRAM_PASSWORD': password,
+        'DOWNLOAD_PATH': download_path
+    }
+    loaded_accounts.append(new_account)
+    
+    # 리스트박스에 추가
+    accounts_listbox.insert(tk.END, username)
+    
+    # 설정 저장 및 LOGIN_HISTORY 업데이트
+    config = load_config()
+    config['ACCOUNTS'] = loaded_accounts
+    
+    # LOGIN_HISTORY에 추가 (중복 제거)
+    login_history = config.get('LOGIN_HISTORY', [])
+    # 기존 항목 제거 (중복 방지)
+    login_history = [hist for hist in login_history if hist['username'] != username]
+    # 새 항목을 맨 앞에 추가
+    login_history.insert(0, {
+        'username': username,
+        'password': password,
+        'download_path': download_path
+    })
+    # 최대 10개까지만 유지
+    config['LOGIN_HISTORY'] = login_history[:10]
+    
+    save_config(config)
+    
+    append_status_func(f"계정 추가됨: {username}")
+    if dialog:
+        dialog.destroy()
