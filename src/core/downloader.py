@@ -32,6 +32,13 @@ class CustomRateController(RateController):
         self.last_reset_time = self.start_time  # 마지막 리셋 시간
         self.reset_count = 0  # 리셋 횟수 추적
         
+        # 동적 조절 시스템 초기화
+        self.dynamic_adjustment_enabled = True
+        self.last_adjustment_time = time.time()
+        self.adjustment_interval = 60  # 1분마다 조절 (더 빠른 대응)
+        self.original_additional_wait_time = additional_wait_time
+        self.current_adjustment_factor = 1.0
+        
         # 모드별 설정 적용
         if anti_detection_mode == "FAST":
             self._apply_ultra_fast_settings()
@@ -49,6 +56,7 @@ class CustomRateController(RateController):
         if self._human_behavior_enabled:
             print(f"🛡️  [ANTI-DETECTION] 설정 초기화 주기: {self.reset_interval/3600}시간")
             print(f"⏰ [ANTI-DETECTION] 다음 초기화까지: {self.reset_interval/3600}시간")
+            print(f"⚡ [DYNAMIC] 동적 대기시간 조절 활성화됨")
     
     def _apply_ultra_fast_settings(self):
         """FAST 모드를 위한 초고속 설정 적용 (ON 모드(기본값) 대비 50% 더 완화)"""
@@ -126,6 +134,9 @@ class CustomRateController(RateController):
         # 3. 시간 기반 카운터 리셋
         self._reset_time_based_counters()
         
+        # 4. 동적 조절 시스템 초기화
+        self._reset_dynamic_adjustment()
+        
         safe_debug(f"[ANTI-DETECTION] 설정 초기화 완료 - 모드: {self.anti_detection_mode}")
     
     def _reset_internal_state(self):
@@ -159,9 +170,116 @@ class CustomRateController(RateController):
         
         safe_debug("[ANTI-DETECTION] 시간 기반 카운터 초기화 완료")
     
+
+    def _reset_dynamic_adjustment(self):
+        """동적 조절 시스템 초기화"""
+        self.current_adjustment_factor = 1.0
+        self.additional_wait_time = self.original_additional_wait_time
+        self.last_adjustment_time = time.time()
+        safe_debug("[DYNAMIC] 동적 조절 시스템 초기화 완료")
+    
+    def _get_request_thresholds(self):
+        """모드별 요청 수 임계값 반환"""
+        thresholds = {
+            "FAST": {
+                "high": 100,    # 1시간에 100회 이상 시 대기시간 크게 증가 (더 관대함)
+                "medium": 70,   # 1시간에 70회 이상 시 대기시간 증가
+                "low": 40,      # 1시간에 40회 미만 시 대기시간 감소
+                "very_low": 20  # 1시간에 20회 미만 시 대기시간 크게 감소
+            },
+            "ON": {
+                "high": 80,     # 1시간에 80회 이상 시 대기시간 크게 증가
+                "medium": 50,   # 1시간에 50회 이상 시 대기시간 증가
+                "low": 30,      # 1시간에 30회 미만 시 대기시간 감소
+                "very_low": 15  # 1시간에 15회 미만 시 대기시간 크게 감소
+            },
+            "SAFE": {
+                "high": 50,     # 1시간에 50회 이상 시 대기시간 크게 증가 (가장 보수적)
+                "medium": 30,   # 1시간에 30회 이상 시 대기시간 증가
+                "low": 20,      # 1시간에 20회 미만 시 대기시간 감소
+                "very_low": 10  # 1시간에 10회 미만 시 대기시간 크게 감소
+            }
+        }
+        return thresholds.get(self.anti_detection_mode, thresholds["ON"])
+    
+    def _calculate_recent_requests(self, time_window=3600):
+        """최근 지정된 시간(초) 내 요청 수 계산"""
+        current_time = time.time()
+        cutoff_time = current_time - time_window
+        
+        if hasattr(self, '_request_timestamps'):
+            return len([ts for ts in self._request_timestamps if ts >= cutoff_time])
+        return 0
+    
+    def _check_and_adjust_dynamically(self):
+        """동적 대기시간 조절 체크 및 실행"""
+        if not self.dynamic_adjustment_enabled or not self._human_behavior_enabled:
+            return
+        
+        current_time = time.time()
+        
+        # 실시간 모니터링: 10분 기준 즉시 조절 (모드별 임계값)
+        recent_10min_requests = self._calculate_recent_requests(600)  # 10분
+        realtime_thresholds = {
+            "FAST": 20,   # 10분에 20회 (1시간에 120회)
+            "ON": 15,     # 10분에 15회 (1시간에 90회)  
+            "SAFE": 10    # 10분에 10회 (1시간에 60회)
+        }
+        threshold = realtime_thresholds.get(self.anti_detection_mode, 25)
+        
+        if recent_10min_requests > threshold:
+            self.current_adjustment_factor = 1.5  # 즉시 50% 증가
+            self.additional_wait_time = self.original_additional_wait_time * self.current_adjustment_factor
+            safe_debug(f"[DYNAMIC] 실시간 조절: 10분 내 {recent_10min_requests}회 요청으로 대기시간 50% 증가 (임계값: {threshold}회)")
+            return
+        
+        # 조절 간격 체크 (1분마다)
+        if current_time - self.last_adjustment_time < self.adjustment_interval:
+            return
+        
+        # 최근 1시간 내 요청 수 계산
+        recent_requests = self._calculate_recent_requests(3600)
+        
+        # 모드별 임계값 가져오기
+        thresholds = self._get_request_thresholds()
+        
+        # 대기시간 조절 계수 계산 (더 강한 조절)
+        old_factor = self.current_adjustment_factor
+        
+        if recent_requests >= thresholds["high"]:
+            self.current_adjustment_factor = 2.0  # 100% 증가 (더 강한 조절)
+            status = "높음"
+        elif recent_requests >= thresholds["medium"]:
+            self.current_adjustment_factor = 1.5  # 50% 증가
+            status = "보통"
+        elif recent_requests >= thresholds["low"]:
+            self.current_adjustment_factor = 1.0  # 유지
+            status = "낮음"
+        elif recent_requests >= thresholds["very_low"]:
+            self.current_adjustment_factor = 0.7  # 30% 감소
+            status = "매우 낮음"
+        else:
+            self.current_adjustment_factor = 0.5  # 50% 감소
+            status = "극히 낮음"
+        
+        # 대기시간 적용
+        self.additional_wait_time = self.original_additional_wait_time * self.current_adjustment_factor
+        
+        # 조절 시간 업데이트
+        self.last_adjustment_time = current_time
+        
+        # 로깅 (조절 계수가 변경된 경우에만)
+        if abs(old_factor - self.current_adjustment_factor) > 0.05:
+            print(f"📊 [DYNAMIC] 최근 1시간 요청: {recent_requests}회 ({status})")
+            print(f"⚡ [DYNAMIC] 대기시간 조절: {old_factor:.2f} → {self.current_adjustment_factor:.2f}배")
+            print(f"⏱️  [DYNAMIC] 실제 대기시간: {self.additional_wait_time:.2f}초")
+    
     def wait_before_query(self, query_type: str) -> None:
         # 6시간 체크 및 리셋 (매 요청마다 실행)
         self._check_and_reset_if_needed()
+        
+        # 동적 대기시간 조절 (5분마다 실행)
+        self._check_and_adjust_dynamically()
         
         # Instaloader의 기본 대기시간 계산
         base_waittime = self.query_waittime(query_type, time.monotonic(), False)
