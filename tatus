@@ -1,0 +1,48 @@
+[1mdiff --git a/src/gui/components/search_panel.py b/src/gui/components/search_panel.py[m
+[1mindex a629a5f..7bba511 100644[m
+[1m--- a/src/gui/components/search_panel.py[m
+[1m+++ b/src/gui/components/search_panel.py[m
+[36m@@ -157,8 +157,8 @@[m [mclass SearchPanel:[m
+         reset_time_frame.grid(row=1, column=1, sticky='w', padx=5, pady=2)[m
+         [m
+         self.reset_interval_var = tk.StringVar(value=str(self.config.get('ANTI_DETECTION_RESET_INTERVAL', 6)))[m
+[31m-        reset_time_entry = ttk.Entry(reset_time_frame, textvariable=self.reset_interval_var, width=8)[m
+[31m-        reset_time_entry.grid(row=0, column=0, padx=(0, 5))[m
+[32m+[m[32m        self.reset_time_entry = ttk.Entry(reset_time_frame, textvariable=self.reset_interval_var, width=8)[m
+[32m+[m[32m        self.reset_time_entry.grid(row=0, column=0, padx=(0, 5))[m
+         [m
+         ttk.Label(reset_time_frame, text="시간").grid(row=0, column=1, sticky='w')[m
+         [m
+[36m@@ -181,6 +181,7 @@[m [mclass SearchPanel:[m
+         [m
+         # 초기 설명 설정[m
+         self._update_mode_description()[m
+[32m+[m[32m        self._update_reset_interval_state()[m
+         [m
+         # 이벤트 바인딩[m
+         self._bind_events(hashtag_frame, user_id_frame, include_images_check_hashtag, include_videos_check_hashtag,[m
+[36m@@ -805,6 +806,7 @@[m [mclass SearchPanel:[m
+     def _on_anti_detection_mode_change(self, event=None):[m
+         """Anti-Detection 모드 변경 시 호출"""[m
+         self._update_mode_description()[m
+[32m+[m[32m        self._update_reset_interval_state()[m
+         self._save_config()[m
+ [m
+     def _update_mode_description(self):[m
+[36m@@ -817,3 +819,16 @@[m [mclass SearchPanel:[m
+         settings = get_anti_detection_settings(mode_key)[m
+         description = f"{settings['description']} - {settings['use_case']}"[m
+         self.mode_description_var.set(description)[m
+[32m+[m[41m    [m
+[32m+[m[32m    def _update_reset_interval_state(self):[m
+[32m+[m[32m        """초기화 주기 입력 필드 상태 업데이트"""[m
+[32m+[m[32m        from ...core.anti_detection import get_mode_from_display_value[m
+[32m+[m[41m        [m
+[32m+[m[32m        display_value = self.anti_detection_mode_var.get()[m
+[32m+[m[32m        mode_key = get_mode_from_display_value(display_value)[m
+[32m+[m[41m        [m
+[32m+[m[32m        # OFF 모드일 때는 초기화 주기 입력 필드 비활성화[m
+[32m+[m[32m        if mode_key == "OFF":[m
+[32m+[m[32m            self.reset_time_entry.config(state='disabled')[m
+[32m+[m[32m        else:[m
+[32m+[m[32m            self.reset_time_entry.config(state='normal')[m

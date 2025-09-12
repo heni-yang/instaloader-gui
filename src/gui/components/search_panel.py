@@ -157,8 +157,8 @@ class SearchPanel:
         reset_time_frame.grid(row=1, column=1, sticky='w', padx=5, pady=2)
         
         self.reset_interval_var = tk.StringVar(value=str(self.config.get('ANTI_DETECTION_RESET_INTERVAL', 6)))
-        reset_time_entry = ttk.Entry(reset_time_frame, textvariable=self.reset_interval_var, width=8)
-        reset_time_entry.grid(row=0, column=0, padx=(0, 5))
+        self.reset_time_entry = ttk.Entry(reset_time_frame, textvariable=self.reset_interval_var, width=8)
+        self.reset_time_entry.grid(row=0, column=0, padx=(0, 5))
         
         ttk.Label(reset_time_frame, text="시간").grid(row=0, column=1, sticky='w')
         
@@ -181,6 +181,7 @@ class SearchPanel:
         
         # 초기 설명 설정
         self._update_mode_description()
+        self._update_reset_interval_state()
         
         # 이벤트 바인딩
         self._bind_events(hashtag_frame, user_id_frame, include_images_check_hashtag, include_videos_check_hashtag,
@@ -805,6 +806,7 @@ class SearchPanel:
     def _on_anti_detection_mode_change(self, event=None):
         """Anti-Detection 모드 변경 시 호출"""
         self._update_mode_description()
+        self._update_reset_interval_state()
         self._save_config()
 
     def _update_mode_description(self):
@@ -817,3 +819,16 @@ class SearchPanel:
         settings = get_anti_detection_settings(mode_key)
         description = f"{settings['description']} - {settings['use_case']}"
         self.mode_description_var.set(description)
+    
+    def _update_reset_interval_state(self):
+        """초기화 주기 입력 필드 상태 업데이트"""
+        from ...core.anti_detection import get_mode_from_display_value
+        
+        display_value = self.anti_detection_mode_var.get()
+        mode_key = get_mode_from_display_value(display_value)
+        
+        # OFF 모드일 때는 초기화 주기 입력 필드 비활성화
+        if mode_key == "OFF":
+            self.reset_time_entry.config(state='disabled')
+        else:
+            self.reset_time_entry.config(state='normal')
