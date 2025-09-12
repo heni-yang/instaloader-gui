@@ -2,7 +2,7 @@ certifi==2024.8.30
 charset-normalizer==3.4.0
 cryptography>=44.0.0
 idna==3.10
-instaloader @ git+https://github.com/heni-yang/instaloader_heni.git@0680869ec3109473fb00f835d0ceec8477029255
+instaloader @ git+https://github.com/heni-yang/instaloader_heni.git@b0ed88512ed0ce35e510d7d33f384614a623fe77
 numpy==2.2.0
 opencv-python==4.10.0.84
 pillow==11.0.0
