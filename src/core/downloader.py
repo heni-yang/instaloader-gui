@@ -44,6 +44,11 @@ class CustomRateController(RateController):
         safe_debug(f"[ANTI-DETECTION] 추가 대기: {self.additional_wait_time}초")
         safe_debug(f"[ANTI-DETECTION] 리셋 주기: {self.reset_interval/3600}시간")
         safe_debug(f"[ANTI-DETECTION] 시작시간: {datetime.fromtimestamp(self.start_time)}")
+        
+        # 보안모드가 활성화된 경우에만 초기화 주기 정보 표시
+        if self._human_behavior_enabled:
+            print(f"🛡️  [ANTI-DETECTION] 설정 초기화 주기: {self.reset_interval/3600}시간")
+            print(f"⏰ [ANTI-DETECTION] 다음 초기화까지: {self.reset_interval/3600}시간")
     
     def _apply_ultra_fast_settings(self):
         """FAST 모드를 위한 초고속 설정 적용 (ON 모드(기본값) 대비 50% 더 완화)"""
@@ -83,16 +88,27 @@ class CustomRateController(RateController):
         current_time = time.time()
         time_since_last_reset = current_time - self.last_reset_time
         
+        # 보안모드가 활성화된 경우에만 초기화까지 남은 시간 계산 및 표시
+        if self._human_behavior_enabled:
+            remaining_time = self.reset_interval - time_since_last_reset
+            if remaining_time > 0:
+                remaining_hours = int(remaining_time // 3600)
+                remaining_minutes = int((remaining_time % 3600) // 60)
+                print(f"⏰ [ANTI-DETECTION] 초기화까지 {remaining_hours}시간 {remaining_minutes}분 남음")
+        
         if time_since_last_reset >= self.reset_interval:
             self._reset_anti_detection_settings()
             self.last_reset_time = current_time
             self.reset_count += 1
             
-            # 리셋 로깅
-            elapsed_hours = time_since_last_reset / 3600
-            safe_debug(f"[ANTI-DETECTION] {self.reset_interval/3600}시간 경과로 설정 초기화됨")
-            safe_debug(f"[ANTI-DETECTION] 경과시간: {elapsed_hours:.1f}시간")
-            safe_debug(f"[ANTI-DETECTION] 리셋 횟수: {self.reset_count}회")
+            # 보안모드가 활성화된 경우에만 리셋 로깅 표시
+            if self._human_behavior_enabled:
+                elapsed_hours = int(time_since_last_reset // 3600)
+                elapsed_minutes = int((time_since_last_reset % 3600) // 60)
+                reset_interval_hours = int(self.reset_interval // 3600)
+                print(f"🔄 [ANTI-DETECTION] {reset_interval_hours}시간 경과로 설정 초기화됨")
+                print(f"⏱️  [ANTI-DETECTION] 경과시간: {elapsed_hours}시간 {elapsed_minutes}분")
+                print(f"🔢 [ANTI-DETECTION] 리셋 횟수: {self.reset_count}회")
     
     def _reset_anti_detection_settings(self):
         """anti-detection 설정을 초기 상태로 리셋"""
