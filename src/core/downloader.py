@@ -15,6 +15,7 @@ from ..utils.logger import log_download_failure, log_download_success, log_accou
 class CustomRateController(RateController):
     def __init__(self, context, additional_wait_time=0.0, anti_detection_mode="ON"):
         from .anti_detection import get_anti_detection_settings
+        from ..utils.config import load_config
         
         super().__init__(context)
         self.additional_wait_time = additional_wait_time
@@ -23,6 +24,13 @@ class CustomRateController(RateController):
         # 모드별 설정 가져오기
         settings = get_anti_detection_settings(anti_detection_mode)
         self._human_behavior_enabled = settings['human_behavior_enabled']
+        
+        # 리셋시간 설정 로드 (GUI에서 설정한 값)
+        config = load_config()
+        self.reset_interval = config.get('ANTI_DETECTION_RESET_INTERVAL', 6) * 3600  # 시간을 초로 변환
+        self.start_time = time.time()  # 크롤링 시작 시간
+        self.last_reset_time = self.start_time  # 마지막 리셋 시간
+        self.reset_count = 0  # 리셋 횟수 추적
         
         # 모드별 설정 적용
         if anti_detection_mode == "FAST":
@@ -34,40 +42,111 @@ class CustomRateController(RateController):
         safe_debug(f"[ANTI-DETECTION] 모드: {anti_detection_mode}")
         safe_debug(f"[ANTI-DETECTION] Human behavior: {self._human_behavior_enabled}")
         safe_debug(f"[ANTI-DETECTION] 추가 대기: {self.additional_wait_time}초")
+        safe_debug(f"[ANTI-DETECTION] 리셋 주기: {self.reset_interval/3600}시간")
+        safe_debug(f"[ANTI-DETECTION] 시작시간: {datetime.fromtimestamp(self.start_time)}")
     
     def _apply_ultra_fast_settings(self):
-        """FAST 모드를 위한 초고속 설정 적용 (ON 모드 대비 50% 더 완화)"""
-        # ON 모드(완화된 설정) 대비 더 완화
-        self._consecutive_penalty_factor = 0.1      # 0.2 → 0.1 (50% 감소)
-        self._peak_hours_multiplier = 1.1          # 1.2 → 1.1 (피크시간 영향 최소화)
-        self._break_threshold_time = 7200          # 3600 → 7200 (60분 → 120분)
-        self._break_threshold_requests = 200       # 150 → 200 (더 많은 요청 허용)
-        self._min_break_time = 10                  # 15 → 10 (최소 브레이크 단축)
-        self._max_break_time = 60                  # 150 → 60 (최대 브레이크 단축)
+        """FAST 모드를 위한 초고속 설정 적용 (ON 모드(기본값) 대비 50% 더 완화)"""
+        # ON 모드(instaloader_heni 기본값) 대비 50% 더 완화
+        self._consecutive_penalty_factor = 0.05     # 0.1 → 0.05 (50% 감소)
+        self._peak_hours_multiplier = 1.05         # 1.1 → 1.05 (더 완화)
+        self._break_threshold_time = 18000         # 120분 → 180분 (50% 증가)
+        self._break_threshold_requests = 300       # 200 → 300 (50% 증가)
+        self._min_break_time = 5                   # 10초 → 5초 (50% 감소)
+        self._max_break_time = 30                  # 60초 → 30초 (50% 감소)
         
         safe_debug("[ANTI-DETECTION] FAST 모드: 초고속 설정 적용됨")
     
     def _apply_conservative_settings(self):
-        """SAFE 모드를 위한 보수적 설정 적용 (수정 전 원본 설정으로 복원)"""
-        self._consecutive_penalty_factor = 0.5  # 0.2 → 0.5
-        self._peak_hours_multiplier = 1.5       # 1.2 → 1.5  
-        self._break_threshold_time = 1800       # 3600 → 1800 (60분 → 30분)
-        self._break_threshold_requests = 100    # 150 → 100
-        self._min_break_time = 30               # 15 → 30
-        self._max_break_time = 300              # 150 → 300
+        """SAFE 모드를 위한 보수적 설정 적용 (ON 모드(기본값) 대비 보수적)"""
+        # ON 모드(instaloader_heni 기본값) 대비 보수적 설정
+        self._consecutive_penalty_factor = 0.2   # 0.1 → 0.2 (2배 증가)
+        self._peak_hours_multiplier = 1.3       # 1.1 → 1.3 (더 보수적)
+        self._break_threshold_time = 3600       # 120분 → 60분 (50% 감소)
+        self._break_threshold_requests = 100    # 200 → 100 (50% 감소)
+        self._min_break_time = 20               # 10초 → 20초 (2배 증가)
+        self._max_break_time = 120              # 60초 → 120초 (2배 증가)
         
         safe_debug("[ANTI-DETECTION] SAFE 모드: 보수적 설정 적용됨")
     
     def count_per_sliding_window(self, query_type: str) -> int:
         """모드별 rate limiting 적용"""
         if self.anti_detection_mode == "FAST":
-            return 120 if query_type == 'other' else 300  # ON 모드 대비 20% 증가 (90→120, 250→300)
+            return 150 if query_type == 'other' else 400  # ON 모드 대비 50% 증가
         elif self.anti_detection_mode == "SAFE":
-            return 75 if query_type == 'other' else 200   # 수정 전 보수적 값
+            return 75 if query_type == 'other' else 200   # 보수적 설정
         else:
-            return super().count_per_sliding_window(query_type)  # ON 모드 완화된 값 (90, 250)
+            return super().count_per_sliding_window(query_type)  # ON 모드는 instaloader_heni 기본값 사용
+    
+    def _check_and_reset_if_needed(self):
+        """설정된 시간마다 설정 초기화 확인"""
+        current_time = time.time()
+        time_since_last_reset = current_time - self.last_reset_time
+        
+        if time_since_last_reset >= self.reset_interval:
+            self._reset_anti_detection_settings()
+            self.last_reset_time = current_time
+            self.reset_count += 1
+            
+            # 리셋 로깅
+            elapsed_hours = time_since_last_reset / 3600
+            safe_debug(f"[ANTI-DETECTION] {self.reset_interval/3600}시간 경과로 설정 초기화됨")
+            safe_debug(f"[ANTI-DETECTION] 경과시간: {elapsed_hours:.1f}시간")
+            safe_debug(f"[ANTI-DETECTION] 리셋 횟수: {self.reset_count}회")
+    
+    def _reset_anti_detection_settings(self):
+        """anti-detection 설정을 초기 상태로 리셋"""
+        
+        # 1. 모드별 설정 재적용
+        if self.anti_detection_mode == "FAST":
+            self._apply_ultra_fast_settings()
+        elif self.anti_detection_mode == "SAFE":
+            self._apply_conservative_settings()
+        # ON/OFF 모드는 기본 설정 유지
+        
+        # 2. RateController 내부 상태 완전 초기화
+        self._reset_internal_state()
+        
+        # 3. 시간 기반 카운터 리셋
+        self._reset_time_based_counters()
+        
+        safe_debug(f"[ANTI-DETECTION] 설정 초기화 완료 - 모드: {self.anti_detection_mode}")
+    
+    def _reset_internal_state(self):
+        """RateController 내부 상태 초기화"""
+        
+        # 연속 요청 관련 상태 리셋
+        self._consecutive_requests = 0
+        self._consecutive_penalty = 0
+        
+        # 시간 기반 카운터 리셋
+        self._request_timestamps = []
+        self._hourly_request_count = {}
+        
+        # 패널티 상태 리셋
+        self._current_penalty = 0
+        self._peak_hours_penalty = 0
+        
+        # 브레이크 관련 상태 리셋
+        self._last_break_time = 0
+        self._break_duration = 0
+        
+        safe_debug("[ANTI-DETECTION] 내부 상태 초기화 완료")
+    
+    def _reset_time_based_counters(self):
+        """시간 기반 카운터 리셋"""
+        # 시간 기반 카운터들을 초기화
+        if hasattr(self, '_hourly_request_count'):
+            self._hourly_request_count.clear()
+        if hasattr(self, '_request_timestamps'):
+            self._request_timestamps.clear()
+        
+        safe_debug("[ANTI-DETECTION] 시간 기반 카운터 초기화 완료")
     
     def wait_before_query(self, query_type: str) -> None:
+        # 6시간 체크 및 리셋 (매 요청마다 실행)
+        self._check_and_reset_if_needed()
+        
         # Instaloader의 기본 대기시간 계산
         base_waittime = self.query_waittime(query_type, time.monotonic(), False)
         
@@ -98,13 +177,12 @@ create_dir_if_not_exists(SESSION_DIR)
 STAMPS_FILE_IMAGES = Environment.STAMPS_FILE
 STAMPS_FILE_REELS = Environment.CONFIG_DIR / "latest-stamps-reels.ini"
 
-def instaloader_login(username, password, download_path, include_videos=False, include_reels=False, cookiefile=None, resume_prefix=None, request_wait_time=0.0, anti_detection_mode="ON"):
+def instaloader_login(username, download_path, include_videos=False, include_reels=False, cookiefile=None, resume_prefix=None, request_wait_time=0.0, anti_detection_mode="ON"):
     """
-    Instaloader를 사용해 인스타그램에 로그인합니다.
+    Instaloader를 사용해 인스타그램에 로그인합니다. (세션 파일 사용)
     
     매개변수:
         username (str): 사용자 이름.
-        password (str): 비밀번호.
         download_path (str): 다운로드 경로.
         include_videos (bool): 영상 다운로드 여부.
         include_reels (bool): 릴스 다운로드 여부.
@@ -124,18 +202,51 @@ def instaloader_login(username, password, download_path, include_videos=False, i
     print(f"[ANTI-DETECTION] 모드 설정: {anti_detection_mode}")
     print(f"[RESUME DEBUG] 기본 Resume prefix 설정: {resume_prefix}")
         
-    L = instaloader.Instaloader(
-        download_videos=include_videos or include_reels,
-        download_video_thumbnails=False,
-        download_geotags=False,
-        download_comments=False,
-        save_metadata=False,
-        post_metadata_txt_pattern='',
-        dirname_pattern=download_path,
-        max_connection_attempts=10,  # 재시도 횟수를 3회로 제한
-        resume_prefix=resume_prefix,  # 기본 이어받기 활성화 (프로필별로 덮어씀)
-        rate_controller=lambda context: CustomRateController(context, request_wait_time, anti_detection_mode)
-    )
+    # Anti-Detection 모드에 따른 Instaloader 설정
+    if anti_detection_mode == "OFF":
+        # OFF 모드: --no-anti-detection 옵션 사용
+        L = instaloader.Instaloader(
+            download_videos=include_videos or include_reels,
+            download_video_thumbnails=False,
+            download_geotags=False,
+            download_comments=False,
+            save_metadata=False,
+            post_metadata_txt_pattern='',
+            dirname_pattern=download_path,
+            max_connection_attempts=10,
+            resume_prefix=resume_prefix,
+            no_anti_detection=True  # --no-anti-detection 옵션 사용
+        )
+        print(f"[ANTI-DETECTION] OFF 모드: --no-anti-detection 옵션 사용")
+    elif anti_detection_mode == "ON":
+        # ON 모드: instaloader_heni 기본값 사용 (CustomRateController 없이)
+        L = instaloader.Instaloader(
+            download_videos=include_videos or include_reels,
+            download_video_thumbnails=False,
+            download_geotags=False,
+            download_comments=False,
+            save_metadata=False,
+            post_metadata_txt_pattern='',
+            dirname_pattern=download_path,
+            max_connection_attempts=10,
+            resume_prefix=resume_prefix
+            # rate_controller 설정 안함 = 기본값 사용
+        )
+        print(f"[ANTI-DETECTION] ON 모드: instaloader_heni 기본값 사용")
+    else:
+        # FAST/SAFE 모드: CustomRateController 사용
+        L = instaloader.Instaloader(
+            download_videos=include_videos or include_reels,
+            download_video_thumbnails=False,
+            download_geotags=False,
+            download_comments=False,
+            save_metadata=False,
+            post_metadata_txt_pattern='',
+            dirname_pattern=download_path,
+            max_connection_attempts=10,
+            resume_prefix=resume_prefix,
+            rate_controller=lambda context: CustomRateController(context, request_wait_time, anti_detection_mode)
+        )
     print_debug_rate_controller(username, request_wait_time)
     session_file = os.path.join(SESSION_DIR, f"{username}.session")
     
@@ -165,10 +276,9 @@ def instaloader_login(username, password, download_path, include_videos=False, i
             L.context.username = logged_in_username
             L.save_session_to_file(session_file)
         else:
-            # 세션 파일이 없고 cookiefile도 제공되지 않으면, 사용자명과 비밀번호로 로그인
-            L.login(username, password)
-            print_login_success(username)
-            L.save_session_to_file(filename=session_file)
+            # 세션 파일이 없고 cookiefile도 제공되지 않으면 에러 (비밀번호 로그인 제거)
+            print_login_failure(username, "세션 파일 또는 Firefox 쿠키 파일이 필요합니다")
+            return None
     except instaloader.exceptions.BadCredentialsException:
         print_login_failure(username, "잘못된 아이디/비밀번호")
         return None
@@ -609,20 +719,47 @@ def setup_accounts(accounts, base_download_path, include_videos, include_reels, 
         # 익명 크롤링
         print(f"[REQUEST_WAIT_DEBUG] 익명 크롤링 시작 - 요청 간 대기시간: {request_wait_time}초")
         
-        loader = instaloader.Instaloader(
-            download_videos=include_videos,
-            download_video_thumbnails=False,
-            download_geotags=False,
-            download_comments=False,
-            save_metadata=False,
-            post_metadata_txt_pattern='',
-            dirname_pattern=os.path.join(base_download_path, "unclassified"),
-            max_connection_attempts=3,
-            resume_prefix="resume_anonymous",
-            rate_controller=lambda context: CustomRateController(context, request_wait_time, anti_detection_mode)
-        )
+        # 익명 크롤링에서도 Anti-Detection 모드 적용
+        if anti_detection_mode == "OFF":
+            loader = instaloader.Instaloader(
+                download_videos=include_videos,
+                download_video_thumbnails=False,
+                download_geotags=False,
+                download_comments=False,
+                save_metadata=False,
+                post_metadata_txt_pattern='',
+                dirname_pattern=os.path.join(base_download_path, "unclassified"),
+                max_connection_attempts=3,
+                resume_prefix="resume_anonymous",
+                no_anti_detection=True
+            )
+        elif anti_detection_mode == "ON":
+            loader = instaloader.Instaloader(
+                download_videos=include_videos,
+                download_video_thumbnails=False,
+                download_geotags=False,
+                download_comments=False,
+                save_metadata=False,
+                post_metadata_txt_pattern='',
+                dirname_pattern=os.path.join(base_download_path, "unclassified"),
+                max_connection_attempts=3,
+                resume_prefix="resume_anonymous"
+            )
+        else:
+            loader = instaloader.Instaloader(
+                download_videos=include_videos,
+                download_video_thumbnails=False,
+                download_geotags=False,
+                download_comments=False,
+                save_metadata=False,
+                post_metadata_txt_pattern='',
+                dirname_pattern=os.path.join(base_download_path, "unclassified"),
+                max_connection_attempts=3,
+                resume_prefix="resume_anonymous",
+                rate_controller=lambda context: CustomRateController(context, request_wait_time, anti_detection_mode)
+            )
         safe_debug(f"[REQUEST_WAIT_DEBUG] CustomRateController 적용됨 - 익명 사용자, 추가 대기시간: {request_wait_time}초")
-        loaded_loaders.append({'loader': loader, 'username': 'anonymous', 'password': None, 'active': True})
+        loaded_loaders.append({'loader': loader, 'username': 'anonymous', 'active': True})
     else:
         # 계정 크롤링
         safe_debug(f"[REQUEST_WAIT_DEBUG] 계정 크롤링 시작 - 요청 간 대기시간: {request_wait_time}초")
@@ -630,7 +767,6 @@ def setup_accounts(accounts, base_download_path, include_videos, include_reels, 
         for account in accounts:
             loader = instaloader_login(
                 account['INSTAGRAM_USERNAME'],
-                account['INSTAGRAM_PASSWORD'],
                 os.path.join(base_download_path, "unclassified"),
                 include_videos,
                 include_reels,
@@ -642,7 +778,6 @@ def setup_accounts(accounts, base_download_path, include_videos, include_reels, 
                 loaded_loaders.append({
                     'loader': loader,
                     'username': account['INSTAGRAM_USERNAME'],
-                    'password': account['INSTAGRAM_PASSWORD'],
                     'active': True
                 })
                 
@@ -650,12 +785,11 @@ def setup_accounts(accounts, base_download_path, include_videos, include_reels, 
                 config = load_config()
                 config['LAST_ACCOUNT_USED'] = account['INSTAGRAM_USERNAME']
                 
-                # LOGIN_HISTORY 업데이트 (최근 사용한 계정을 맨 앞으로)
+                # LOGIN_HISTORY 업데이트 (최근 사용한 계정을 맨 앞으로, 비밀번호 제거)
                 login_history = config.get('LOGIN_HISTORY', [])
                 login_history = [hist for hist in login_history if hist['username'] != account['INSTAGRAM_USERNAME']]
                 login_history.insert(0, {
                     'username': account['INSTAGRAM_USERNAME'],
-                    'password': account['INSTAGRAM_PASSWORD'],
                     'download_path': account['DOWNLOAD_PATH']
                 })
                 config['LOGIN_HISTORY'] = login_history[:10]
@@ -777,7 +911,6 @@ def process_downloads(loaded_loaders, search_terms, target, search_type, include
                 # 429 오류가 아닌 경우: 재로그인 시도 후 실패하면 마지막 계정이면 중단
                 new_loader = instaloader_login(
                     loader_dict['username'],
-                    loader_dict['password'],
                     os.path.join(base_download_path, "unclassified"),
                     include_videos,
                     include_reels,

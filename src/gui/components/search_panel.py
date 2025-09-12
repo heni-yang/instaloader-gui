@@ -135,6 +135,7 @@ class SearchPanel:
         
         anti_detection_frame = ttk.LabelFrame(search_type_frame, text="🛡️ Anti-Detection 모드", padding=5)
         anti_detection_frame.grid(row=4, column=0, columnspan=2, sticky='ew', padx=5, pady=5)
+        anti_detection_frame.columnconfigure(1, weight=1)
         
         ttk.Label(anti_detection_frame, text="크롤링 보안 모드:").grid(row=0, column=0, sticky='w', padx=5, pady=2)
         
@@ -148,6 +149,22 @@ class SearchPanel:
         )
         self.anti_detection_combo.grid(row=0, column=1, sticky='w', padx=5, pady=2)
         
+        # 리셋시간 설정 추가
+        ttk.Label(anti_detection_frame, text="설정 초기화 주기:").grid(row=1, column=0, sticky='w', padx=5, pady=2)
+        
+        # 리셋시간 입력 필드와 단위
+        reset_time_frame = ttk.Frame(anti_detection_frame)
+        reset_time_frame.grid(row=1, column=1, sticky='w', padx=5, pady=2)
+        
+        self.reset_interval_var = tk.StringVar(value=str(self.config.get('ANTI_DETECTION_RESET_INTERVAL', 6)))
+        reset_time_entry = ttk.Entry(reset_time_frame, textvariable=self.reset_interval_var, width=8)
+        reset_time_entry.grid(row=0, column=0, padx=(0, 5))
+        
+        ttk.Label(reset_time_frame, text="시간").grid(row=0, column=1, sticky='w')
+        
+        # 리셋시간 변경 이벤트 바인딩
+        self.reset_interval_var.trace_add('write', lambda *args: self._save_config())
+        
         # 모드 설명 (동적 업데이트)
         self.mode_description_var = tk.StringVar()
         description_label = ttk.Label(
@@ -157,7 +174,7 @@ class SearchPanel:
             wraplength=400,
             font=('Arial', 9)
         )
-        description_label.grid(row=1, column=0, columnspan=2, sticky='w', padx=5, pady=(2, 5))
+        description_label.grid(row=2, column=0, columnspan=2, sticky='w', padx=5, pady=(2, 5))
         
         # 모드 변경 이벤트 바인딩
         self.anti_detection_combo.bind('<<ComboboxSelected>>', self._on_anti_detection_mode_change)
@@ -587,9 +604,16 @@ class SearchPanel:
             mode_key = get_mode_from_display_value(display_value)
             config['ANTI_DETECTION_MODE'] = mode_key
             
+            # 리셋시간 저장
+            try:
+                reset_interval = int(self.reset_interval_var.get())
+                config['ANTI_DETECTION_RESET_INTERVAL'] = max(1, reset_interval)  # 최소 1시간
+            except (ValueError, AttributeError):
+                config['ANTI_DETECTION_RESET_INTERVAL'] = 6  # 기본값
+            
             # 호환성을 위해 기존 REQUEST_WAIT_TIME도 업데이트
             settings = get_anti_detection_settings(mode_key)
-            config['REQUEST_WAIT_TIME'] = settings['additional_wait_time']
+            config['REQUEST_WAIT_TIME'] = settings.get('additional_wait_time', 0.0)
             
             save_config(config)
             
