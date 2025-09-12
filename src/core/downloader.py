@@ -44,13 +44,21 @@ class CustomRateController(RateController):
             self._apply_ultra_fast_settings()
         elif anti_detection_mode == "SAFE":
             self._apply_conservative_settings()
-        # OFF 모드와 ON 모드는 기본 설정 사용
+        elif anti_detection_mode == "ON":
+            self._apply_on_mode_settings()
+        # OFF 모드는 기본 설정 사용
         
         safe_debug(f"[ANTI-DETECTION] 모드: {anti_detection_mode}")
         safe_debug(f"[ANTI-DETECTION] Human behavior: {self._human_behavior_enabled}")
         safe_debug(f"[ANTI-DETECTION] 추가 대기: {self.additional_wait_time}초")
         safe_debug(f"[ANTI-DETECTION] 리셋 주기: {self.reset_interval/3600}시간")
         safe_debug(f"[ANTI-DETECTION] 시작시간: {datetime.fromtimestamp(self.start_time)}")
+        
+        # 요청 추적을 위한 타임스탬프 리스트 초기화
+        self._request_timestamps = []
+        
+        # 이전 요청 수 정보 복원 (크롤링 재시작 시)
+        self._restore_request_history()
         
         # 보안모드가 활성화된 경우에만 초기화 주기 정보 표시
         if self._human_behavior_enabled:
@@ -68,6 +76,11 @@ class CustomRateController(RateController):
         self._min_break_time = 5                   # 10초 → 5초 (50% 감소)
         self._max_break_time = 30                  # 60초 → 30초 (50% 감소)
         
+        # FAST 모드 기본 추가 대기시간 설정 (동적 조절의 기준점)
+        if self.original_additional_wait_time == 0.0:
+            self.original_additional_wait_time = 1.0  # 1.0초 기본값 (가장 빠른 속도)
+            self.additional_wait_time = self.original_additional_wait_time
+        
         safe_debug("[ANTI-DETECTION] FAST 모드: 초고속 설정 적용됨")
     
     def _apply_conservative_settings(self):
@@ -80,7 +93,98 @@ class CustomRateController(RateController):
         self._min_break_time = 20               # 10초 → 20초 (2배 증가)
         self._max_break_time = 120              # 60초 → 120초 (2배 증가)
         
+        # SAFE 모드 기본 추가 대기시간 설정 (동적 조절의 기준점)
+        if self.original_additional_wait_time == 0.0:
+            self.original_additional_wait_time = 1.5  # 1.5초 기본값 (가장 보수적)
+            self.additional_wait_time = self.original_additional_wait_time
+        
         safe_debug("[ANTI-DETECTION] SAFE 모드: 보수적 설정 적용됨")
+    
+    def _apply_on_mode_settings(self):
+        """ON 모드를 위한 설정 적용 (기본값 + 동적 조절)"""
+        # ON 모드는 기본 설정 유지하되 동적 조절 기능 추가
+        # 기본 추가 대기시간 설정 (동적 조절의 기준점)
+        if self.original_additional_wait_time == 0.0:
+            self.original_additional_wait_time = 1.25  # 1.25초 기본값 (중간 속도)
+            self.additional_wait_time = self.original_additional_wait_time
+        
+        safe_debug("[ANTI-DETECTION] ON 모드: 기본 설정 + 동적 조절 활성화")
+    
+    def _restore_request_history(self):
+        """이전 요청 수 정보를 config에서 복원"""
+        try:
+            from ..utils.config import load_config, save_config
+            config = load_config()
+            
+            # 요청 수 정보가 저장되어 있는지 확인
+            if 'REQUEST_HISTORY' in config:
+                request_history = config['REQUEST_HISTORY']
+                current_time = time.time()
+                
+                # 저장된 타임스탬프들을 복원 (2시간 이내의 것만)
+                cutoff_time = current_time - 7200  # 2시간
+                restored_timestamps = []
+                
+                for timestamp in request_history.get('timestamps', []):
+                    if timestamp >= cutoff_time:
+                        restored_timestamps.append(timestamp)
+                
+                self._request_timestamps = restored_timestamps
+                
+                # 복원된 요청 수 로그
+                if restored_timestamps:
+                    recent_10min = len([ts for ts in restored_timestamps if ts >= current_time - 600])
+                    recent_60min = len([ts for ts in restored_timestamps if ts >= current_time - 3600])
+                    print(f"🔄 [RESTORE] 이전 요청 수 복원: 최근 10분 {recent_10min}회, 최근 60분 {recent_60min}회")
+                else:
+                    print(f"🔄 [RESTORE] 복원할 요청 수 정보 없음 (2시간 이내 데이터 없음)")
+                    
+        except Exception as e:
+            safe_debug(f"[RESTORE] 요청 수 복원 실패: {e}")
+    
+    def _save_request_history(self):
+        """현재 요청 수 정보를 config에 저장"""
+        try:
+            from ..utils.config import load_config, save_config
+            config = load_config()
+            
+            # 현재 타임스탬프들을 저장 (2시간 이내의 것만)
+            current_time = time.time()
+            cutoff_time = current_time - 7200  # 2시간
+            recent_timestamps = [ts for ts in self._request_timestamps if ts >= cutoff_time]
+            
+            config['REQUEST_HISTORY'] = {
+                'timestamps': recent_timestamps,
+                'last_save_time': current_time
+            }
+            
+            save_config(config)
+            safe_debug(f"[SAVE] 요청 수 정보 저장: {len(recent_timestamps)}개 타임스탬프")
+            
+        except Exception as e:
+            safe_debug(f"[SAVE] 요청 수 저장 실패: {e}")
+    
+    def _save_request_history_silent(self):
+        """현재 요청 수 정보를 config에 저장 (로그 없이)"""
+        try:
+            from ..utils.config import load_config, save_config
+            config = load_config()
+            
+            # 현재 타임스탬프들을 저장 (2시간 이내의 것만)
+            current_time = time.time()
+            cutoff_time = current_time - 7200  # 2시간
+            recent_timestamps = [ts for ts in self._request_timestamps if ts >= cutoff_time]
+            
+            config['REQUEST_HISTORY'] = {
+                'timestamps': recent_timestamps,
+                'last_save_time': current_time
+            }
+            
+            save_config(config)
+            # 저장 로그는 출력하지 않음
+            
+        except Exception as e:
+            safe_debug(f"[SAVE] 요청 수 저장 실패: {e}")
     
     def count_per_sliding_window(self, query_type: str) -> int:
         """모드별 rate limiting 적용"""
@@ -103,6 +207,14 @@ class CustomRateController(RateController):
                 remaining_hours = int(remaining_time // 3600)
                 remaining_minutes = int((remaining_time % 3600) // 60)
                 print(f"⏰ [ANTI-DETECTION] 초기화까지 {remaining_hours}시간 {remaining_minutes}분 남음")
+                
+                # 요청 수 모니터링 로그 추가 및 저장
+                recent_10min_requests = self._calculate_recent_requests(600)  # 10분
+                recent_60min_requests = self._calculate_recent_requests(3600)  # 60분
+                print(f"📊 [MONITOR] 최근 10분 요청: {recent_10min_requests}회, 최근 60분 요청: {recent_60min_requests}회")
+                
+                # 모니터링 로그 표시 시마다 요청 수 정보 저장 (저장 로그는 숨김)
+                self._save_request_history_silent()
         
         if time_since_last_reset >= self.reset_interval:
             self._reset_anti_detection_settings()
@@ -218,7 +330,7 @@ class CustomRateController(RateController):
         
         current_time = time.time()
         
-        # 실시간 모니터링: 10분 기준 즉시 조절 (모드별 임계값)
+        # 실시간 모니터링: 10분 기준 점진적 조절 (모드별 임계값)
         recent_10min_requests = self._calculate_recent_requests(600)  # 10분
         realtime_thresholds = {
             "FAST": 20,   # 10분에 20회 (1시간에 120회)
@@ -227,11 +339,50 @@ class CustomRateController(RateController):
         }
         threshold = realtime_thresholds.get(self.anti_detection_mode, 25)
         
+        # 점진적 조절 시스템
         if recent_10min_requests > threshold:
-            self.current_adjustment_factor = 1.5  # 즉시 50% 증가
+            # 임계값 초과 정도에 따른 점진적 조절
+            excess_ratio = recent_10min_requests / threshold
+            
+            # 모든 모드 동일한 조절 계수 사용
+            if excess_ratio >= 2.0:  # 2배 이상 초과
+                new_factor = 8.0  # 700% 증가
+                status = "극도로 높음"
+            elif excess_ratio >= 1.5:  # 1.5배 이상 초과
+                new_factor = 5.0  # 400% 증가
+                status = "매우 높음"
+            elif excess_ratio >= 1.2:  # 1.2배 이상 초과
+                new_factor = 3.0  # 200% 증가
+                status = "높음"
+            else:  # 임계값 초과
+                new_factor = 2.0  # 100% 증가
+                status = "보통"
+            
+            # 조절 계수 업데이트
+            old_factor = self.current_adjustment_factor
+            self.current_adjustment_factor = new_factor
             self.additional_wait_time = self.original_additional_wait_time * self.current_adjustment_factor
-            safe_debug(f"[DYNAMIC] 실시간 조절: 10분 내 {recent_10min_requests}회 요청으로 대기시간 50% 증가 (임계값: {threshold}회)")
+            
+            print(f"🚨 [DYNAMIC] 실시간 조절: 10분 내 {recent_10min_requests}회 요청 ({status}, 임계값: {threshold}회)")
+            print(f"⚡ [DYNAMIC] 조절 계수: {old_factor:.2f} → {self.current_adjustment_factor:.2f}배, 추가 대기: {self.additional_wait_time:.3f}초")
             return
+        
+        # 임계값 근처에서 자동 조절 (임계값의 80%~100% 범위)
+        elif recent_10min_requests >= threshold * 0.8:
+            # 임계값에 가까우면 조절 계수를 점진적으로 감소
+            if self.current_adjustment_factor > 1.0:
+                # 현재 조절 계수가 1.0보다 크면 점진적으로 감소
+                target_factor = 1.0 + (self.current_adjustment_factor - 1.0) * 0.8  # 20% 감소
+                if target_factor < 1.0:
+                    target_factor = 1.0
+                
+                old_factor = self.current_adjustment_factor
+                self.current_adjustment_factor = target_factor
+                self.additional_wait_time = self.original_additional_wait_time * self.current_adjustment_factor
+                
+                print(f"🎯 [DYNAMIC] 임계값 근접 조절: 10분 내 {recent_10min_requests}회 요청 (임계값: {threshold}회)")
+                print(f"⚡ [DYNAMIC] 조절 계수: {old_factor:.2f} → {self.current_adjustment_factor:.2f}배, 추가 대기: {self.additional_wait_time:.3f}초")
+                return
         
         # 조절 간격 체크 (1분마다)
         if current_time - self.last_adjustment_time < self.adjustment_interval:
@@ -268,26 +419,50 @@ class CustomRateController(RateController):
         # 조절 시간 업데이트
         self.last_adjustment_time = current_time
         
-        # 로깅 (조절 계수가 변경된 경우에만)
+        # 로깅 (1분마다 현재 상태 표시)
         if abs(old_factor - self.current_adjustment_factor) > 0.05:
+            # 조절 계수가 변경된 경우
             print(f"📊 [DYNAMIC] 최근 1시간 요청: {recent_requests}회 ({status})")
             print(f"⚡ [DYNAMIC] 대기시간 조절: {old_factor:.2f} → {self.current_adjustment_factor:.2f}배")
             print(f"⏱️  [DYNAMIC] 실제 대기시간: {self.additional_wait_time:.2f}초")
+        else:
+            # 조절 계수가 변경되지 않은 경우에도 현재 상태 표시
+            print(f"📊 [DYNAMIC] 최근 1시간 요청: {recent_requests}회 ({status}) - 조절 계수 유지: {self.current_adjustment_factor:.2f}배")
     
     def wait_before_query(self, query_type: str) -> None:
         # 6시간 체크 및 리셋 (매 요청마다 실행)
         self._check_and_reset_if_needed()
+        
+        # 요청 타임스탬프 기록 (동적 조절을 위한 요청 추적)
+        current_time = time.time()
+        if not hasattr(self, '_request_timestamps'):
+            self._request_timestamps = []
+        self._request_timestamps.append(current_time)
+        
+        # 오래된 타임스탬프 정리 (메모리 효율성을 위해 2시간 이상 된 것만 유지)
+        cutoff_time = current_time - 7200  # 2시간
+        self._request_timestamps = [ts for ts in self._request_timestamps if ts >= cutoff_time]
         
         # 동적 대기시간 조절 (5분마다 실행)
         self._check_and_adjust_dynamically()
         
         # Instaloader의 기본 대기시간 계산
         base_waittime = self.query_waittime(query_type, time.monotonic(), False)
+        safe_debug(f"[DEBUG] query_waittime 결과: {base_waittime}초 (query_type: {query_type})")
+        
+        # Instaloader의 원래 동작 복원 (최소 보장 제거)
+        # base_waittime은 Instaloader가 자동으로 조절하도록 함
+        
+        # 동적 조절된 추가 대기시간 적용
+        total_waittime = base_waittime + self.additional_wait_time
         
         # 기본 동작만 수행 (프로필 간 대기는 다운로더 레벨에서 처리)
-        if base_waittime > 0:
-            print(f"[REQUEST_WAIT_DEBUG] 기본 대기 시작: {base_waittime}초")
-            self.sleep(base_waittime)
+        if total_waittime > 0:
+            if self.additional_wait_time > 0:
+                print(f"[REQUEST_WAIT_DEBUG] 기본 대기: {base_waittime:.3f}초 + 동적 조절: {self.additional_wait_time:.3f}초 = 총 {total_waittime:.3f}초")
+            else:
+                print(f"[REQUEST_WAIT_DEBUG] 기본 대기 시작: {base_waittime:.3f}초")
+            self.sleep(total_waittime)
         
         # Instaloader의 내부 상태 업데이트
         super().wait_before_query(query_type)
@@ -353,7 +528,7 @@ def instaloader_login(username, download_path, include_videos=False, include_ree
         )
         print(f"[ANTI-DETECTION] OFF 모드: --no-anti-detection 옵션 사용")
     elif anti_detection_mode == "ON":
-        # ON 모드: instaloader_heni 기본값 사용 (CustomRateController 없이)
+        # ON 모드: CustomRateController 사용 (동적 조절 기능 포함)
         L = instaloader.Instaloader(
             download_videos=include_videos or include_reels,
             download_video_thumbnails=False,
@@ -363,10 +538,10 @@ def instaloader_login(username, download_path, include_videos=False, include_ree
             post_metadata_txt_pattern='',
             dirname_pattern=download_path,
             max_connection_attempts=10,
-            resume_prefix=resume_prefix
-            # rate_controller 설정 안함 = 기본값 사용
+            resume_prefix=resume_prefix,
+            rate_controller=lambda context: CustomRateController(context, request_wait_time, anti_detection_mode)
         )
-        print(f"[ANTI-DETECTION] ON 모드: instaloader_heni 기본값 사용")
+        print(f"[ANTI-DETECTION] ON 모드: CustomRateController 사용 (동적 조절 활성화)")
     else:
         # FAST/SAFE 모드: CustomRateController 사용
         L = instaloader.Instaloader(
@@ -786,6 +961,14 @@ def user_download_with_profiles(L, search_user, target, include_images, include_
                     progress_queue.put(("term_progress", profile.username, "동영상 이동 완료", L.context.username))
         except Exception as e:
             error_msg = str(e)
+            
+            # Resume 파일 삭제 오류는 무시 (Instaloader 4.14의 정상 동작)
+            if "지정된 파일을 찾을 수 없습니다" in error_msg and "resume" in error_msg.lower():
+                print(f"ℹ️ [RESUME] {search_user} - Resume 파일 삭제 완료 (정상 동작)")
+                # Resume 파일 삭제는 정상 동작이므로 성공으로 처리
+                progress_queue.put(("term_complete", search_user, "다운로드 완료", L.context.username))
+                return
+            
             print(f"{search_user} 다운로드 오류: {error_msg}")
             
             # "Private but not followed" 오류 감지 및 저장
@@ -1124,4 +1307,18 @@ def crawl_and_download(search_terms, target, accounts, search_type, include_imag
     )
     
     # 4. 완료 처리
+    # 최종 요청 수 정보 저장
+    try:
+        # 현재 활성화된 CustomRateController가 있다면 요청 수 정보 저장
+        if loaded_loaders:
+            for loader_dict in loaded_loaders:
+                loader = loader_dict['loader']
+                if hasattr(loader, 'context') and hasattr(loader.context, '_rate_controller'):
+                    rate_controller = loader.context._rate_controller
+                    if hasattr(rate_controller, '_save_request_history_silent'):
+                        rate_controller._save_request_history_silent()
+                        break
+    except Exception as e:
+        safe_debug(f"[FINAL_SAVE] 최종 요청 수 저장 실패: {e}")
+    
     on_complete("크롤링 완료됨.") 
